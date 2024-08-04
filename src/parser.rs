@@ -575,10 +575,7 @@ where
     just(Token::LeftBrace)
         .ignore_then(just(Token::Colon))
         .ignore_then(attribute_name)
-        .then(
-            attribute_param, // .delimited_by(just(Token::LeftParen), just(Token::RightParen))
-                             // .or_not(),
-        )
+        .then(attribute_param)
         .then_ignore(just(Token::RightBrace))
         .map(|(name, params)| Attribute { name, params })
 }
@@ -604,12 +601,14 @@ where
     I: ValueInput<'a, Token = Token<'a>, Span = SimpleSpan>,
 {
     let assert = just(Token::Assert)
-        .ignore_then(expression())
-        .map(Statement::Assert);
+        .ignore_then(attribute().repeated().collect())
+        .then(expression())
+        .map(|(attrs, e)| Statement::Assert(attrs, e));
 
     let assume = just(Token::Assume)
-        .ignore_then(expression())
-        .map(Statement::Assume);
+        .ignore_then(attribute().repeated().collect())
+        .then(expression())
+        .map(|(attrs, e)| Statement::Assume(attrs, e));
 
     let lhs_el = {
         use chumsky::pratt::*;
@@ -765,6 +764,7 @@ where
                 Literal::BitVector(parts[0].parse().unwrap(), parts[1].parse().unwrap())
             )
         },
+        Token::String(s) => Expression::Literal(Literal::String(s.to_string())),
         Token::True => Expression::Literal(Literal::Bool(true)),
         Token::False => Expression::Literal(Literal::Bool(false)),
     }
@@ -794,19 +794,21 @@ where
                 just(Token::Exists).to(Quantifier::Exists),
             ));
 
-            let bound_vars = ident()
-                .separated_by(just(Token::Comma))
-                .collect::<Vec<_>>()
-                .then_ignore(just(Token::Colon))
-                .then(type_expr())
-                .map(|(ids, ty)| ids.into_iter().map(|i| (i, ty.clone())).collect::<Vec<_>>());
+            let bound_vars = ids_type();
 
+            let trigger = expr
+                .clone()
+                .separated_by(just(Token::Comma))
+                .collect()
+                .delimited_by(just(Token::LeftBrace), just(Token::RightBrace))
+                .map(Trigger);
             quantifier_type
                 .then(bound_vars)
                 .then_ignore(just(Token::DoubleColon))
+                .then(trigger)
                 .then(expr.clone())
-                .map(|((quantifier, vars), body)| {
-                    Expression::Quantifier(quantifier, vars, Box::new(body))
+                .map(|(((quantifier, vars), trigger), body)| {
+                    Expression::Quantifier(quantifier, vars, Box::new(trigger), Box::new(body))
                 })
         };
 
@@ -829,16 +831,7 @@ where
             )
             .map(|e| Expression::Old(Box::new(e)));
 
-        // let constructor = ident()
-        //     .then(
-        //         expr.clone()
-        //             .separated_by(just(Token::Comma))
-        //             .collect()
-        //             .delimited_by(just(Token::LeftParen), just(Token::RightParen)),
-        //     )
-        //     .map(|(id, e)| Expression::FunctionCall(id, e));
-
-        let function_call = select! { Token::Ident(name) => name.to_string() }
+        let function_call = ident()
             .then(
                 expr.clone()
                     .separated_by(just(Token::Comma))
@@ -850,20 +843,42 @@ where
 
         let atom = choice((literal, old, function_call, variable, parenthesized));
 
-        let map_access = atom.foldl(
-            expr.clone()
-                .separated_by(just(Token::Comma))
-                .collect::<Vec<_>>()
-                .delimited_by(just(Token::LeftBracket), just(Token::RightBracket))
-                .repeated(),
-            |acc, indices| Expression::MapSelect(Box::new(acc), indices),
-        );
+        enum MapOp {
+            Bv(Expression, Expression),
+            Map(Vec<Expression>),
+        }
+        let bv_extract = expr
+            .clone()
+            .then_ignore(just(Token::Colon))
+            .then(expr.clone())
+            .map(|(a, b)| MapOp::Bv(a, b));
+        let map_ = expr
+            .clone()
+            .separated_by(just(Token::Comma))
+            .collect::<Vec<_>>()
+            .map(MapOp::Map);
+        let map_access = atom
+            .foldl(
+                bv_extract
+                    .clone()
+                    .or(bv_extract.delimited_by(just(Token::LeftParen), just(Token::RightParen)))
+                    .or(map_)
+                    .delimited_by(just(Token::LeftBracket), just(Token::RightBracket))
+                    .repeated(),
+                |acc, indices| match indices {
+                    MapOp::Bv(a, b) => {
+                        Expression::BvExtract(Box::new(acc), Box::new(a), Box::new(b))
+                    }
+                    MapOp::Map(indices) => Expression::MapSelect(Box::new(acc), indices),
+                },
+            )
+            .labelled("map access");
 
         let atom = choice((map_access, if_, quantifier, lambda));
         use chumsky::pratt::*;
 
         atom.pratt((
-            prefix(0, just(Token::Minus), |_, e| {
+            prefix(0, just(Token::Minus).labelled("operator"), |_, e| {
                 Expression::UnaryOp(UnaryOp::Neg, Box::new(e))
             }),
             prefix(
@@ -906,6 +921,9 @@ where
             infix(left(7), just(Token::Plus), |l, _, r| {
                 Expression::BinaryOp(BinaryOp::Add, Box::new(l), Box::new(r))
             }),
+            infix(left(7), just(Token::Increment), |l, _, r| {
+                Expression::BinaryOp(BinaryOp::Concat, Box::new(l), Box::new(r))
+            }),
             infix(left(7), just(Token::Minus), |l, _, r| {
                 Expression::BinaryOp(BinaryOp::Sub, Box::new(l), Box::new(r))
             }),
@@ -921,13 +939,15 @@ where
             infix(right(9), just(Token::Exponentiation), |l, _, r| {
                 Expression::BinaryOp(BinaryOp::Pow, Box::new(l), Box::new(r))
             }),
-            // postfix(
-            //     10,
-            //     just(Token::LeftBracket)
-            //         .ignore_then(expr.clone().boxed().separated_by(just(Token::Comma)).collect::<Vec<_>>())
-            //         .then_ignore(just(Token::RightBracket)),
-            //     |e, op| Expression::MapSelect(Box::new(e), op),
-            // ),
+            postfix(10, just(Token::Arrow).ignore_then(ident()), |l, f| {
+                Expression::Field(Box::new(l), f)
+            }), // postfix(
+                //     10,
+                //     just(Token::LeftBracket)
+                //         .ignore_then(expr.clone().boxed().separated_by(just(Token::Comma)).collect::<Vec<_>>())
+                //         .then_ignore(just(Token::RightBracket)),
+                //     |e, op| Expression::MapSelect(Box::new(e), op),
+                // ),
         ))
         .boxed()
     })

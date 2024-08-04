@@ -146,16 +146,26 @@ pub enum Type {
 pub enum Expression {
     Literal(Literal),
     Var(String),
+    Field(Box<Expression>, String),
     UnaryOp(UnaryOp, Box<Expression>),
     BinaryOp(BinaryOp, Box<Expression>, Box<Expression>),
     FunctionCall(String, Vec<Expression>),
     MapSelect(Box<Expression>, Vec<Expression>),
+    BvExtract(Box<Expression>, Box<Expression>, Box<Expression>),
     MapUpdate(Box<Expression>, Box<Expression>, Box<Expression>),
     Old(Box<Expression>),
-    Quantifier(Quantifier, Vec<(String, Type)>, Box<Expression>),
+    Quantifier(
+        Quantifier,
+        Vec<(String, Type)>,
+        Box<Trigger>,
+        Box<Expression>,
+    ),
     Lambda(Vec<Variable>, Box<Expression>),
     If(Box<Expression>, Box<Expression>, Box<Expression>),
 }
+
+#[derive(Debug, Clone)]
+pub struct Trigger(pub Vec<Expression>);
 
 #[derive(Debug, Clone)]
 pub enum Literal {
@@ -163,6 +173,7 @@ pub enum Literal {
     Real(f64),
     Bool(bool),
     BitVector(i128, u16),
+    String(String),
 }
 
 #[derive(Debug, Clone)]
@@ -189,6 +200,7 @@ pub enum BinaryOp {
     Implies,
     Iff,
     Pow,
+    Concat,
 }
 
 #[derive(Debug, Clone)]
@@ -221,8 +233,8 @@ pub enum Lhs {
 pub enum Statement {
     Block(BasicBlock),
     Assign(Vec<Lhs>, Vec<Expression>),
-    Assert(Expression),
-    Assume(Expression),
+    Assert(Vec<Attribute>, Expression),
+    Assume(Vec<Attribute>, Expression),
     Havoc(Vec<String>),
     Call(String, Vec<Expression>, Vec<Expression>),
     If(Option<Expression>, ImplBlock, Option<ImplBlock>),

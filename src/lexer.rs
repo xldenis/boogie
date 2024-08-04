@@ -6,7 +6,7 @@ use logos::Logos;
 #[logos(skip r"/\*(?:[^*]|\*[^/])*\*/")] // Ignore block comments
 pub enum Token<'a> {
     Error,
-    #[regex(r"([a-zA-Z_][a-zA-Z0-9_']*)", priority = 2)]
+    #[regex(r"([#$'\.?A-Z^-z~][#$'\.0-9?A-Z^-z~]*)", priority = 2)]
     Ident(&'a str),
 
     #[regex(r"([0-9]+bv[0-9]+)")]
@@ -261,7 +261,7 @@ impl<'a> fmt::Display for Token<'a> {
             Token::BvLit(s) => write!(f, "{s}"),
             Token::Digits(s) => write!(f, "{s}"),
             // TODO: Escape string
-            Token::String(s) => write!(f, "\"{}\"", s),
+            Token::String(s) => write!(f, "{}", s),
             Token::Decimal(s) => write!(f, "{s}"),
             Token::DecFloat(s) => write!(f, "{s}"),
             Token::Float(s) => write!(f, "{s}"),
