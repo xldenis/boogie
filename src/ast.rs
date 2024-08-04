@@ -1,5 +1,3 @@
-use std::collections::HashMap;
-
 #[derive(Debug, Clone)]
 pub struct Program {
     pub declarations: Vec<Declaration>,
@@ -45,8 +43,7 @@ pub struct AxiomDecl {
 
 #[derive(Debug, Clone)]
 pub struct TypeDecl {
-    pub name: String,
-    pub type_params: Vec<TypeVariable>,
+    pub names: Vec<(String, Vec<TypeVariable>)>,
     pub body: Option<Type>,
     pub attributes: Vec<Attribute>,
 }
@@ -91,7 +88,7 @@ pub struct Specifications {
 
 #[derive(Debug, Clone)]
 pub struct Signature {
-    pub name : String,
+    pub name: String,
     pub type_params: Vec<TypeVariable>,
     pub params: Vec<FormalArg>,
     pub returns: Option<FormalArg>,
@@ -100,7 +97,7 @@ pub struct Signature {
 #[derive(Debug, Clone)]
 pub enum FormalArg {
     Anon(Type),
-    Named(String, Type)
+    Named(String, Type),
 }
 
 #[derive(Debug, Clone)]
@@ -140,7 +137,7 @@ pub enum Type {
     Int,
     Real,
     Bool,
-    Map(Box<Type>, Box<Type>),
+    Map(Vec<String>, Vec<Type>, Box<Type>),
     TypeVar(String),
     UserDefined(String, Vec<Type>),
 }
@@ -152,11 +149,12 @@ pub enum Expression {
     UnaryOp(UnaryOp, Box<Expression>),
     BinaryOp(BinaryOp, Box<Expression>, Box<Expression>),
     FunctionCall(String, Vec<Expression>),
-    MapSelect(Box<Expression>, Box<Expression>),
+    MapSelect(Box<Expression>, Vec<Expression>),
     MapUpdate(Box<Expression>, Box<Expression>, Box<Expression>),
     Old(Box<Expression>),
-    Quantifier(Quantifier, Vec<Variable>, Box<Expression>),
+    Quantifier(Quantifier, Vec<(String, Type)>, Box<Expression>),
     Lambda(Vec<Variable>, Box<Expression>),
+    If(Box<Expression>, Box<Expression>, Box<Expression>),
 }
 
 #[derive(Debug, Clone)]
@@ -164,6 +162,7 @@ pub enum Literal {
     Int(i64),
     Real(f64),
     Bool(bool),
+    BitVector(i128, u16),
 }
 
 #[derive(Debug, Clone)]
@@ -208,20 +207,26 @@ pub struct ImplBlock {
 pub struct BasicBlock {
     pub label: String,
     pub statements: Vec<Statement>,
-    pub term: Option<Box<Statement>>
+    pub term: Option<Box<Statement>>,
 }
 
+#[derive(Debug, Clone)]
+pub enum Lhs {
+    Simple(String),
+    Map(Box<Lhs>, Vec<Expression>),
+    Field(Box<Lhs>, String),
+}
 
 #[derive(Debug, Clone)]
 pub enum Statement {
     Block(BasicBlock),
-    Assign(Vec<String>, Vec<Expression>),
+    Assign(Vec<Lhs>, Vec<Expression>),
     Assert(Expression),
     Assume(Expression),
-    Havoc(Vec<Expression>),
+    Havoc(Vec<String>),
     Call(String, Vec<Expression>, Vec<Expression>),
-    If(Expression, ImplBlock, Option<ImplBlock>),
-    While(Expression, Vec<Expression>, ImplBlock),
+    If(Option<Expression>, ImplBlock, Option<ImplBlock>),
+    While(Option<Expression>, Vec<Expression>, ImplBlock),
     Break(Option<String>),
     Goto(Vec<String>),
     Return,

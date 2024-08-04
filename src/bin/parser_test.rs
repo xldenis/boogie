@@ -1,10 +1,10 @@
-use std::fs::read_to_string;
+use std::{fs::read_to_string, process::exit};
 
+use boogie::{lexer::Token, parser};
 use chumsky::{
     input::{Input, Stream},
     Parser,
 };
-use boogie::{lexer::Token, parser};
 use logos::Logos;
 // use pretty::{BoxAllocator, Pretty};
 
@@ -23,7 +23,7 @@ fn main() -> color_eyre::eyre::Result<()> {
     let stream = Stream::from_iter(tokens).spanned((file.len()..file.len()).into());
     let parse = parser::program().parse(stream);
 
-    let result = match parse.into_result() {
+    let _result = match parse.into_result() {
         Ok(re) => re,
         Err(errs) => {
             use ariadne::{Color, Label, Report, ReportKind, Source};
@@ -40,7 +40,8 @@ fn main() -> color_eyre::eyre::Result<()> {
                     .eprint(Source::from(&file))
                     .unwrap();
             }
-            return Ok(());
+            exit(1);
+            // return Ok(());
         }
     };
 

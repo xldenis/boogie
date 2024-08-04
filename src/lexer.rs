@@ -1,9 +1,9 @@
 use logos::Logos;
 
-#[derive(Logos, Debug, PartialEq, Copy, Clone,)]
-#[logos(skip r"[ \t\n\f]+")]  // Ignore whitespace
-#[logos(skip r"//.*")]  // Ignore line comments
-#[logos(skip r"/\*(?:[^*]|\*[^/])*\*/")]  // Ignore block comments
+#[derive(Logos, Debug, PartialEq, Copy, Clone)]
+#[logos(skip r"[ \t\n\f]+")] // Ignore whitespace
+#[logos(skip r"//.*")] // Ignore line comments
+#[logos(skip r"/\*(?:[^*]|\*[^/])*\*/")] // Ignore block comments
 pub enum Token<'a> {
     Error,
     #[regex(r"([a-zA-Z_][a-zA-Z0-9_']*)", priority = 2)]
@@ -18,126 +18,237 @@ pub enum Token<'a> {
     #[regex(r#""([^"\\]|\\.)*""#)]
     String(&'a str),
 
-    #[regex(r"[0-9]+\.[0-9]+")]
-    Decimal,
+    #[regex(r"([0-9]+\.[0-9]+)")]
+    Decimal(&'a str),
 
-    #[regex(r"[0-9]+\.[0-9]+e[-+]?[0-9]+")]
-    DecFloat,
+    #[regex(r"([0-9]+\.[0-9]+e[-+]?[0-9]+)")]
+    DecFloat(&'a str),
 
-    #[regex(r"[0-9]+\.[0-9]+[eE][-+]?[0-9]+[fF]")]
-    Float,
+    #[regex(r"([0-9]+\.[0-9]+[eE][-+]?[0-9]+[fF])")]
+    Float(&'a str),
 
-    #[token("yield")] Yield,
-    #[token("var")] Var,
-    #[token(";")] Semicolon,
-    #[token("(")] LeftParen,
-    #[token(")")] RightParen,
-    #[token(":")] Colon,
-    #[token(",")] Comma,
-    #[token("where")] Where,
-    #[token("int")] Int,
-    #[token("real")] Real,
-    #[token("bool")] Bool,
-    #[token("[")] LeftBracket,
-    #[token("]")] RightBracket,
-    #[token("<")] LessThan,
-    #[token(">")] GreaterThan,
-    #[token("const")] Const,
-    #[token("unique")] Unique,
-    #[token("uses")] Uses,
-    #[token("{")] LeftBrace,
-    #[token("}")] RightBrace,
-    #[token("function")] Function,
-    #[token("returns")] Returns,
-    #[token("hideable")] Hideable,
-    #[token("axiom")] Axiom,
-    #[token("type")] Type,
-    #[token("=")] Equals,
-    #[token("datatype")] Datatype,
-    #[token("invariant")] Invariant,
-    #[token("pure")] Pure,
-    #[token("async")] Async,
-    #[token("action")] Action,
-    #[token("creates")] Creates,
-    #[token("refines")] Refines,
-    #[token("using")] Using,
-    #[token("left")] Left,
-    #[token("right")] Right,
-    #[token("both")] Both,
-    #[token("atomic")] Atomic,
-    #[token("procedure")] Procedure,
-    #[token("asserts")] Asserts,
-    #[token("requires")] Requires,
-    #[token("ensures")] Ensures,
-    #[token("preserves")] Preserves,
-    #[token("implementation")] Implementation,
-    #[token("free")] Free,
-    #[token("modifies")] Modifies,
-    #[token("goto")] Goto,
-    #[token("return")] Return,
-    #[token("if")] If,
-    #[token("else")] Else,
-    #[token("while")] While,
-    #[token("*")] Asterisk,
-    #[token("break")] Break,
-    #[token("reveal")] Reveal,
-    #[token("hide")] Hide,
-    #[token("pop")] Pop,
-    #[token("push")] Push,
-    #[token("assert")] Assert,
-    #[token("assume")] Assume,
-    #[token("havoc")] Havoc,
-    #[token(":=")] Assign,
-    #[token("->")] Arrow,
-    #[token("call")] Call,
-    #[token("par")] Par,
-    #[token("|")] VerticalBar,
-    #[token("<==>")] DoubleArrow,
-    #[token("⇔")] LogicalEquivalence,
-    #[token("==>")] Implies,
-    #[token("⇒")] ImpliesSymbol,
-    #[token("<==")] ReverseImplies,
-    #[token("⇐")] ReverseImpliesSymbol,
-    #[token("&&")] LogicalAnd,
-    #[token("∧")] LogicalAndSymbol,
-    #[token("||")] LogicalOr,
-    #[token("∨")] LogicalOrSymbol,
-    #[token("==")] Equality,
-    #[token("<=")] LessThanOrEqual,
-    #[token(">=")] GreaterThanOrEqual,
-    #[token("!=")] NotEqual,
-    #[token("≠")] NotEqualSymbol,
-    #[token("≤")] LessThanOrEqualSymbol,
-    #[token("≥")] GreaterThanOrEqualSymbol,
-    #[token("++")] Increment,
-    #[token("+")] Plus,
-    #[token("-")] Minus,
-    #[token("div")] Div,
-    #[token("mod")] Mod,
-    #[token("/")] Division,
-    #[token("**")] Exponentiation,
-    #[token("is")] Is,
-    #[token("!")] ExclamationMark,
-    #[token("¬")] NegationSymbol,
-    #[token("false")] False,
-    #[token("true")] True,
-    #[token("RNE")] RNE,
-    #[token("RNA")] RNA,
-    #[token("RTP")] RTP,
-    #[token("RTN")] RTN,
-    #[token("RTZ")] RTZ,
-    #[token("old")] Old,
-    #[token("|{")] LeftCodeBlock,
-    #[token("}|")] RightCodeBlock,
-    #[token("then")] Then,
-    #[token("forall")] Forall,
-    #[token("∀")] UniversalQuantifier,
-    #[token("exists")] Exists,
-    #[token("∃")] ExistentialQuantifier,
-    #[token("lambda")] Lambda,
-    #[token("λ")] LambdaSymbol,
-    #[token("::")] DoubleColon,
-    #[token("•")] Bullet,
+    #[token("yield")]
+    Yield,
+    #[token("var")]
+    Var,
+    #[token(";")]
+    Semicolon,
+    #[token("(")]
+    LeftParen,
+    #[token(")")]
+    RightParen,
+    #[token(":")]
+    Colon,
+    #[token(",")]
+    Comma,
+    #[token("where")]
+    Where,
+    #[token("int")]
+    Int,
+    #[token("real")]
+    Real,
+    #[token("bool")]
+    Bool,
+    #[token("[")]
+    LeftBracket,
+    #[token("]")]
+    RightBracket,
+    #[token("<")]
+    LessThan,
+    #[token(">")]
+    GreaterThan,
+    #[token("const")]
+    Const,
+    #[token("unique")]
+    Unique,
+    #[token("uses")]
+    Uses,
+    #[token("{")]
+    LeftBrace,
+    #[token("}")]
+    RightBrace,
+    #[token("function")]
+    Function,
+    #[token("returns")]
+    Returns,
+    #[token("hideable")]
+    Hideable,
+    #[token("axiom")]
+    Axiom,
+    #[token("type")]
+    Type,
+    #[token("=")]
+    Equals,
+    #[token("datatype")]
+    Datatype,
+    #[token("invariant")]
+    Invariant,
+    #[token("pure")]
+    Pure,
+    #[token("async")]
+    Async,
+    #[token("action")]
+    Action,
+    #[token("creates")]
+    Creates,
+    #[token("refines")]
+    Refines,
+    #[token("using")]
+    Using,
+    #[token("left")]
+    Left,
+    #[token("right")]
+    Right,
+    #[token("both")]
+    Both,
+    #[token("atomic")]
+    Atomic,
+    #[token("procedure")]
+    Procedure,
+    #[token("asserts")]
+    Asserts,
+    #[token("requires")]
+    Requires,
+    #[token("ensures")]
+    Ensures,
+    #[token("preserves")]
+    Preserves,
+    #[token("implementation")]
+    Implementation,
+    #[token("free")]
+    Free,
+    #[token("modifies")]
+    Modifies,
+    #[token("goto")]
+    Goto,
+    #[token("return")]
+    Return,
+    #[token("if")]
+    If,
+    #[token("else")]
+    Else,
+    #[token("while")]
+    While,
+    #[token("*")]
+    Asterisk,
+    #[token("break")]
+    Break,
+    #[token("reveal")]
+    Reveal,
+    #[token("hide")]
+    Hide,
+    #[token("pop")]
+    Pop,
+    #[token("push")]
+    Push,
+    #[token("assert")]
+    Assert,
+    #[token("assume")]
+    Assume,
+    #[token("havoc")]
+    Havoc,
+    #[token(":=")]
+    Assign,
+    #[token("->")]
+    Arrow,
+    #[token("call")]
+    Call,
+    #[token("par")]
+    Par,
+    #[token("|")]
+    VerticalBar,
+    #[token("<==>")]
+    DoubleArrow,
+    #[token("⇔")]
+    LogicalEquivalence,
+    #[token("==>")]
+    Implies,
+    #[token("⇒")]
+    ImpliesSymbol,
+    #[token("<==")]
+    ReverseImplies,
+    #[token("⇐")]
+    ReverseImpliesSymbol,
+    #[token("&&")]
+    LogicalAnd,
+    #[token("∧")]
+    LogicalAndSymbol,
+    #[token("||")]
+    LogicalOr,
+    #[token("∨")]
+    LogicalOrSymbol,
+    #[token("==")]
+    Equality,
+    #[token("<=")]
+    LessThanOrEqual,
+    #[token(">=")]
+    GreaterThanOrEqual,
+    #[token("!=")]
+    NotEqual,
+    #[token("≠")]
+    NotEqualSymbol,
+    #[token("≤")]
+    LessThanOrEqualSymbol,
+    #[token("≥")]
+    GreaterThanOrEqualSymbol,
+    #[token("++")]
+    Increment,
+    #[token("+")]
+    Plus,
+    #[token("-")]
+    Minus,
+    #[token("div")]
+    Div,
+    #[token("mod")]
+    Mod,
+    #[token("/")]
+    Division,
+    #[token("**")]
+    Exponentiation,
+    #[token("is")]
+    Is,
+    #[token("!")]
+    ExclamationMark,
+    #[token("¬")]
+    NegationSymbol,
+    #[token("false")]
+    False,
+    #[token("true")]
+    True,
+    #[token("RNE")]
+    RNE,
+    #[token("RNA")]
+    RNA,
+    #[token("RTP")]
+    RTP,
+    #[token("RTN")]
+    RTN,
+    #[token("RTZ")]
+    RTZ,
+    #[token("old")]
+    Old,
+    #[token("|{")]
+    LeftCodeBlock,
+    #[token("}|")]
+    RightCodeBlock,
+    #[token("then")]
+    Then,
+    #[token("forall")]
+    Forall,
+    #[token("∀")]
+    UniversalQuantifier,
+    #[token("exists")]
+    Exists,
+    #[token("∃")]
+    ExistentialQuantifier,
+    #[token("lambda")]
+    Lambda,
+    #[token("λ")]
+    LambdaSymbol,
+    #[token("::")]
+    DoubleColon,
+    #[token("•")]
+    Bullet,
 }
 
 use std::fmt;
@@ -151,9 +262,9 @@ impl<'a> fmt::Display for Token<'a> {
             Token::Digits(s) => write!(f, "{s}"),
             // TODO: Escape string
             Token::String(s) => write!(f, "\"{}\"", s),
-            Token::Decimal => write!(f, "Decimal"),
-            Token::DecFloat => write!(f, "DecFloat"),
-            Token::Float => write!(f, "Float"),
+            Token::Decimal(s) => write!(f, "{s}"),
+            Token::DecFloat(s) => write!(f, "{s}"),
+            Token::Float(s) => write!(f, "{s}"),
             Token::Yield => write!(f, "yield"),
             Token::Var => write!(f, "var"),
             Token::Semicolon => write!(f, ";"),

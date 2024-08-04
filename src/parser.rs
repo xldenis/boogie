@@ -1,6 +1,6 @@
 use super::ast::*;
 use crate::lexer::Token;
-use chumsky::{extra::Err, pratt};
+use chumsky::extra::Err;
 use chumsky::{input::ValueInput, prelude::*};
 
 pub fn program<'a, I>() -> impl Parser<'a, I, Program, Err<Rich<'a, Token<'a>>>>
@@ -64,24 +64,26 @@ where
 {
     let attributes = attribute().repeated().collect();
 
-    (just(Token::Function)
+    let block = expression().delimited_by(just(Token::LeftBrace), just(Token::RightBrace));
+
+    let body = choice((
+        block.map(|e| (Some(e), None)),
+        uses().map(|u| (None, Some(u))),
+        just(Token::Semicolon).map(|_| (None, None)),
+    ));
+
+    just(Token::Function)
         .ignore_then(attributes)
         .then(proc_signature())
-        .then(
-            expression()
-                .delimited_by(just(Token::LeftBrace), just(Token::RightBrace))
-                .or_not(),
-        )
-        .then(uses().or_not())
-        .then_ignore(just(Token::Semicolon)))
-    .map(|(((attrs, sig), body), axioms)| {
-        FunctionDecl {
-            signature: sig,
-            body,
-            axioms,
-            attributes: attrs, //         axioms: axioms.unwrap_or_default(),
-        }
-    })
+        .then(body)
+        .map(|((attrs, sig), (body, axioms))| {
+            FunctionDecl {
+                signature: sig,
+                body,
+                axioms,
+                attributes: attrs, //         axioms: axioms.unwrap_or_default(),
+            }
+        })
 }
 
 fn uses<'a, I>() -> impl Parser<'a, I, Vec<Axiom>, Err<Rich<'a, Token<'a>>>>
@@ -120,13 +122,17 @@ where
     I: ValueInput<'a, Token = Token<'a>, Span = SimpleSpan>,
 {
     ident()
+        .separated_by(just(Token::Comma))
+        .collect::<Vec<_>>()
         .then_ignore(just(Token::Colon))
         .then(type_expr())
-        .repeated()
-        .collect()
+        .map(|(ids, ty)| ids.into_iter().map(|i| (i, ty.clone())).collect::<Vec<_>>())
+        .separated_by(just(Token::Comma))
+        .collect::<Vec<Vec<(_, _)>>>()
+        .map(|vs| vs.into_iter().flatten().collect::<Vec<_>>())
 }
 
-fn ident<'a, I>() -> impl Parser<'a, I, String, Err<Rich<'a, Token<'a>>>>
+fn ident<'a, I>() -> impl Parser<'a, I, String, Err<Rich<'a, Token<'a>>>> + Clone
 where
     I: ValueInput<'a, Token = Token<'a>, Span = SimpleSpan>,
 {
@@ -136,37 +142,27 @@ where
     .labelled("identifier")
 }
 
-fn type_params<'a, I>() -> impl Parser<'a, I, Vec<TypeVariable>, Err<Rich<'a, Token<'a>>>>
-where
-    I: ValueInput<'a, Token = Token<'a>, Span = SimpleSpan>,
-{
-    todo()
-}
-
 fn type_decl<'a, I>() -> impl Parser<'a, I, TypeDecl, Err<Rich<'a, Token<'a>>>>
 where
     I: ValueInput<'a, Token = Token<'a>, Span = SimpleSpan>,
 {
-    let type_param = select! { Token::Ident(name) => TypeVariable { name: name.to_string() } };
+    let type_param = ident().map(|name| TypeVariable { name });
 
-    let type_params = type_param
-        .separated_by(just(Token::Comma))
-        .collect()
-        .delimited_by(just(Token::LessThan), just(Token::GreaterThan))
-        .or_not()
-        .map(|params| params.unwrap_or_default());
-
+    let type_params = type_param.repeated().collect();
     let attributes = attribute().repeated().collect();
+
+    let name = ident().then(type_params);
 
     just(Token::Type)
         .ignore_then(attributes)
-        .then(select! { Token::Ident(name) => name.to_string() })
-        .then(type_params)
+        .then(
+            name.separated_by(just(Token::Comma))
+                .collect::<Vec<(_, _)>>(),
+        )
         .then(just(Token::Equals).ignore_then(type_expr()).or_not())
         .then_ignore(just(Token::Semicolon))
-        .map(|(((attrs, name), type_params), body)| TypeDecl {
-            name,
-            type_params,
+        .map(|((attrs, names), body)| TypeDecl {
+            names,
             body,
             attributes: attrs,
         })
@@ -234,7 +230,7 @@ where
 {
     let attributes = attribute().repeated().collect();
 
-    let id_type = ident().then(type_expr());
+    let id_type = ident().then_ignore(just(Token::Colon)).then(type_expr());
     let where_clause = just(Token::Where).ignore_then(expression());
 
     just(Token::Var)
@@ -386,6 +382,17 @@ fn proc_signature<'a, I>() -> impl Parser<'a, I, Signature, Err<Rich<'a, Token<'
 where
     I: ValueInput<'a, Token = Token<'a>, Span = SimpleSpan>,
 {
+    let returns = just(Token::Returns).ignore_then(
+        formal_arg()
+            .or_not()
+            .delimited_by(just(Token::LeftParen), just(Token::RightParen)),
+    );
+
+    let anon_return = just(Token::Colon)
+        .ignore_then(type_expr())
+        .map(FormalArg::Anon)
+        .map(Some);
+
     ident()
         .then(
             ident()
@@ -402,16 +409,7 @@ where
                 .collect()
                 .delimited_by(just(Token::LeftParen), just(Token::RightParen)),
         )
-        .then(
-            just(Token::Returns)
-                .ignore_then(
-                    formal_arg()
-                        .or_not()
-                        .delimited_by(just(Token::LeftParen), just(Token::RightParen)),
-                )
-                .or_not()
-                .map(|a| a.flatten()),
-        )
+        .then(returns.or(anon_return).or_not().map(|a| a.flatten()))
         .map(|(((name, type_params), params), returns)| Signature {
             name,
             type_params,
@@ -541,21 +539,22 @@ where
         let user_defined = select! {
             Token::Ident(name) if !name.starts_with('\'') => name.to_string()
         }
-        .then(
-            type_expr
-                .clone()
-                .separated_by(just(Token::Comma))
-                .collect()
-                .delimited_by(just(Token::LessThan), just(Token::GreaterThan))
-                .or_not(),
-        )
-        .map(|(name, type_args)| Type::UserDefined(name, type_args.unwrap_or_default()));
+        .then(type_expr.clone().repeated().collect())
+        .map(|(name, type_args)| Type::UserDefined(name, type_args));
 
-        let map_type = just(Token::LeftBracket)
-            .ignore_then(type_expr.clone())
-            .then_ignore(just(Token::RightBracket))
+        let ty_vars = just(Token::LessThan)
+            .ignore_then(ident().separated_by(just(Token::Comma)).collect())
+            .then_ignore(just(Token::GreaterThan))
+            .or_not()
+            .map(|ids| ids.unwrap_or_default());
+        let map_type = ty_vars
+            .then(
+                just(Token::LeftBracket)
+                    .ignore_then(type_expr.clone().separated_by(just(Token::Comma)).collect())
+                    .then_ignore(just(Token::RightBracket)),
+            )
             .then(type_expr.clone())
-            .map(|(domain, range)| Type::Map(Box::new(domain), Box::new(range)));
+            .map(|((vars, domain), range)| Type::Map(vars, domain, Box::new(range)));
 
         let parenthesized = type_expr
             .clone()
@@ -577,60 +576,80 @@ where
         .ignore_then(just(Token::Colon))
         .ignore_then(attribute_name)
         .then(
-            attribute_param
-                .delimited_by(just(Token::LeftParen), just(Token::RightParen))
-                .or_not(),
+            attribute_param, // .delimited_by(just(Token::LeftParen), just(Token::RightParen))
+                             // .or_not(),
         )
         .then_ignore(just(Token::RightBrace))
-        .map(|(name, params)| Attribute {
-            name,
-            params: params.unwrap_or_default(),
-        })
+        .map(|(name, params)| Attribute { name, params })
 }
 
 fn block<'a, I>() -> impl Parser<'a, I, ImplBlock, Err<Rich<'a, Token<'a>>>>
 where
     I: ValueInput<'a, Token = Token<'a>, Span = SimpleSpan>,
 {
-    (local_vars().then(stmt_list()))
-        .delimited_by(just(Token::LeftBrace), just(Token::RightBrace))
-        .map(|(vars, statements)| ImplBlock {
-            local_vars: vars,
-            statements,
-        })
+    (local_var()
+        .repeated()
+        .collect()
+        .map(|v: Vec<_>| v.into_iter().flatten().collect())
+        .then(stmt_list()))
+    .delimited_by(just(Token::LeftBrace), just(Token::RightBrace))
+    .map(|(vars, statements)| ImplBlock {
+        local_vars: vars,
+        statements,
+    })
 }
 
 fn stmt_list<'a, I>() -> impl Parser<'a, I, Vec<Statement>, Err<Rich<'a, Token<'a>>>>
 where
     I: ValueInput<'a, Token = Token<'a>, Span = SimpleSpan>,
 {
-    enum Step {
-        Terminator(Statement),
-        Label(String),
-        Structed(Statement),
-        Cmd(Statement),
-    }
-
     let assert = just(Token::Assert)
         .ignore_then(expression())
-        .then_ignore(just(Token::Semicolon))
         .map(Statement::Assert);
 
     let assume = just(Token::Assume)
         .ignore_then(expression())
-        .then_ignore(just(Token::Semicolon))
         .map(Statement::Assume);
 
-    let lhs_list = ident().separated_by(just(Token::Comma)).collect();
-    let assign = lhs_list
+    let lhs_el = {
+        use chumsky::pratt::*;
+
+        let map = expression()
+            .separated_by(just(Token::Comma))
+            .collect::<Vec<_>>()
+            .delimited_by(just(Token::LeftBracket), just(Token::RightBracket));
+
+        let field = just(Token::Arrow).ignore_then(ident());
+
+        ident()
+            .map(Lhs::Simple)
+            .pratt((
+                postfix(0, map, |l, args| Lhs::Map(Box::new(l), args)),
+                postfix(0, field, |l, args| Lhs::Field(Box::new(l), args)),
+            ))
+            .boxed()
+    };
+
+    // let lhs_el = just(Token::Arrow).ignore_then(expression()).or();
+
+    let assign = lhs_el
+        .separated_by(just(Token::Comma))
+        .collect()
         .then_ignore(just(Token::Assign))
         .then(expression().separated_by(just(Token::Comma)).collect())
-        .then_ignore(just(Token::Semicolon))
         .map(|(i, e)| Statement::Assign(i, e));
 
-    let cmd = choice((assert, assume, assign)).boxed();
+    let havoc = just(Token::Havoc)
+        .ignore_then(ident().separated_by(just(Token::Comma)).collect())
+        .map(|ids| Statement::Havoc(ids));
 
-    let goto = just(Token::Goto).ignore_then(ident().separated_by(just(Token::Comma)).collect()).map(Statement::Goto);
+    let cmd = choice((assert, assume, assign, havoc))
+        .then_ignore(just(Token::Semicolon))
+        .boxed();
+
+    let goto = just(Token::Goto)
+        .ignore_then(ident().separated_by(just(Token::Comma)).collect())
+        .map(Statement::Goto);
     let return_ = just(Token::Return).map(|_| Statement::Return);
 
     let term = choice((goto, return_)).then_ignore(just(Token::Semicolon));
@@ -638,7 +657,7 @@ where
     let block = ident()
         .then_ignore(just(Token::Colon))
         .then(cmd.clone().repeated().collect())
-        .then(term.or_not())
+        .then(term.clone().or_not())
         .map(|((id, cmds), term)| BasicBlock {
             label: id,
             statements: cmds,
@@ -650,26 +669,84 @@ where
     // let term = todo();
 
     // let structured = choice(());
+    let star_or_exp = expression()
+        .map(Some)
+        .or(just(Token::Asterisk).map(|_| None))
+        .delimited_by(just(Token::LeftParen), just(Token::RightParen));
 
-    choice((block, cmd)).repeated().collect()
+    recursive(|stmt| {
+        let if_stmt = just(Token::If)
+            .ignore_then(star_or_exp.clone())
+            .then(
+                stmt.clone()
+                    .repeated()
+                    .collect()
+                    .delimited_by(just(Token::LeftBrace), just(Token::RightBrace)),
+            )
+            .map(|(e, then)| {
+                Statement::If(
+                    e,
+                    ImplBlock {
+                        local_vars: Vec::new(),
+                        statements: then,
+                    },
+                    None,
+                )
+            });
+
+        let invariant_ = just(Token::Invariant)
+            .ignore_then(expression())
+            .then_ignore(just(Token::Semicolon));
+
+        let while_ = just(Token::While)
+            .ignore_then(star_or_exp)
+            .then(invariant_.repeated().collect())
+            .then(
+                stmt.repeated()
+                    .collect()
+                    .delimited_by(just(Token::LeftBrace), just(Token::RightBrace)),
+            )
+            .map(|((e, invs), body)| {
+                Statement::While(
+                    e,
+                    invs,
+                    ImplBlock {
+                        local_vars: Vec::new(),
+                        statements: body,
+                    },
+                )
+            });
+
+        choice((block, cmd.or(term), if_stmt, while_)).boxed()
+    })
+    .repeated()
+    .collect()
 }
 
-fn local_vars<'a, I>() -> impl Parser<'a, I, Vec<(String, Type)>, Err<Rich<'a, Token<'a>>>>
+fn local_var<'a, I>() -> impl Parser<'a, I, Vec<(String, Type)>, Err<Rich<'a, Token<'a>>>>
 where
     I: ValueInput<'a, Token = Token<'a>, Span = SimpleSpan>,
 {
-    just(Token::Var)
-        .ignore_then(ident())
+    let ids_ty_pair = ident()
+        .separated_by(just(Token::Comma))
+        .collect::<Vec<_>>()
         .then_ignore(just(Token::Colon))
         .then(type_expr())
+        .map(|(ids, ty)| ids.into_iter().map(|i| (i, ty.clone())).collect::<Vec<_>>());
+
+    just(Token::Var)
+        .ignore_then(
+            ids_ty_pair
+                .separated_by(just(Token::Comma))
+                .collect::<Vec<_>>(),
+        )
+        .map(|c| c.into_iter().flatten().collect())
         .then_ignore(just(Token::Semicolon))
-        .repeated()
-        .collect()
 }
 
 // pretty bugged out
 
-fn expression<'a, I>() -> impl Parser<'a, I, Expression, Err<Rich<'a, Token<'a>>>>
+fn expression<'a, I>() -> impl Parser<'a, I, Expression, Err<Rich<'a, Token<'a>>>> + Clone
 where
     I: ValueInput<'a, Token = Token<'a>, Span = SimpleSpan>,
 {
@@ -680,36 +757,18 @@ where
 
     let literal = select! {
         Token::Digits(n) => Expression::Literal(Literal::Int(n.parse().unwrap())),
-        // Token::Decimal(n) => Expression::Literal(Literal::Real(n.parse().unwrap())),
-        // Token::BvLit(n) => Expression::Literal(Literal::BitVector(n.to_string())),
+        Token::Decimal(n) => Expression::Literal(Literal::Real(n.parse().unwrap())),
+        Token::BvLit(n) => {
+            let parts: Vec<_> = n.split("bv").collect();
+
+            Expression::Literal(
+                Literal::BitVector(parts[0].parse().unwrap(), parts[1].parse().unwrap())
+            )
+        },
         Token::True => Expression::Literal(Literal::Bool(true)),
         Token::False => Expression::Literal(Literal::Bool(false)),
     }
     .labelled("literal");
-
-    let quantifier = {
-        let quantifier_type = choice((
-            just(Token::Forall).to(Quantifier::Forall),
-            just(Token::Exists).to(Quantifier::Exists),
-        ));
-
-        let bound_var = select! { Token::Ident(name) => name.to_string() }
-            .then_ignore(just(Token::Colon))
-            .then(type_expr())
-            .map(|(name, typ)| Variable {
-                name,
-                typ,
-                where_clause: None,
-            });
-
-        quantifier_type
-            .then(bound_var.separated_by(just(Token::Comma)).collect())
-            .then_ignore(just(Token::DoubleColon))
-            .then(recursive(|expr| expr))
-            .map(|((quantifier, vars), body)| {
-                Expression::Quantifier(quantifier, vars, Box::new(body))
-            })
-    };
 
     let lambda = {
         let bound_var = select! { Token::Ident(name) => name.to_string() }
@@ -729,6 +788,36 @@ where
     };
 
     recursive(|expr| {
+        let quantifier = {
+            let quantifier_type = choice((
+                just(Token::Forall).to(Quantifier::Forall),
+                just(Token::Exists).to(Quantifier::Exists),
+            ));
+
+            let bound_vars = ident()
+                .separated_by(just(Token::Comma))
+                .collect::<Vec<_>>()
+                .then_ignore(just(Token::Colon))
+                .then(type_expr())
+                .map(|(ids, ty)| ids.into_iter().map(|i| (i, ty.clone())).collect::<Vec<_>>());
+
+            quantifier_type
+                .then(bound_vars)
+                .then_ignore(just(Token::DoubleColon))
+                .then(expr.clone())
+                .map(|((quantifier, vars), body)| {
+                    Expression::Quantifier(quantifier, vars, Box::new(body))
+                })
+        };
+
+        let if_ = {
+            just(Token::If)
+                .ignore_then(expr.clone())
+                .then(just(Token::Then).ignore_then(expr.clone()))
+                .then(just(Token::Else).ignore_then(expr.clone()))
+                .map(|((e, t), f)| Expression::If(Box::new(e), Box::new(t), Box::new(f)))
+        };
+
         let parenthesized = expr
             .clone()
             .delimited_by(just(Token::LeftParen), just(Token::RightParen));
@@ -740,6 +829,15 @@ where
             )
             .map(|e| Expression::Old(Box::new(e)));
 
+        // let constructor = ident()
+        //     .then(
+        //         expr.clone()
+        //             .separated_by(just(Token::Comma))
+        //             .collect()
+        //             .delimited_by(just(Token::LeftParen), just(Token::RightParen)),
+        //     )
+        //     .map(|(id, e)| Expression::FunctionCall(id, e));
+
         let function_call = select! { Token::Ident(name) => name.to_string() }
             .then(
                 expr.clone()
@@ -747,91 +845,90 @@ where
                     .collect()
                     .delimited_by(just(Token::LeftParen), just(Token::RightParen)),
             )
-            .map(|(name, args)| Expression::FunctionCall(name, args));
+            .map(|(name, args)| Expression::FunctionCall(name, args))
+            .labelled("function call");
 
-        let atom = choice((literal, variable, old, function_call, parenthesized));
+        let atom = choice((literal, old, function_call, variable, parenthesized));
 
-        let atom = choice((atom.clone(), quantifier, lambda));
+        let map_access = atom.foldl(
+            expr.clone()
+                .separated_by(just(Token::Comma))
+                .collect::<Vec<_>>()
+                .delimited_by(just(Token::LeftBracket), just(Token::RightBracket))
+                .repeated(),
+            |acc, indices| Expression::MapSelect(Box::new(acc), indices),
+        );
+
+        let atom = choice((map_access, if_, quantifier, lambda));
         use chumsky::pratt::*;
-        let map_access = atom
-            // .then(
-            //     expr.clone()
-            //         .separated_by(just(Token::Comma))
-            //         .delimited_by(just(Token::LeftBracket), just(Token::RightBracket))
-            //         .repeated()
-            // )
-            // .foldl(|acc, indices| {
-            //     Expression::MapSelect(Box::new(acc), indices)
-            // });
-            ;
-        map_access
-            .pratt((
-                prefix(0, just(Token::Minus), |_, e| {
-                    Expression::UnaryOp(UnaryOp::Neg, Box::new(e))
-                }),
-                prefix(
-                    0,
-                    just(Token::NegationSymbol).or(just(Token::ExclamationMark)),
-                    |_, e| Expression::UnaryOp(UnaryOp::Not, Box::new(e)),
-                ),
-                infix(
-                    left(1),
-                    just(Token::DoubleArrow).or(just(Token::LogicalEquivalence)),
-                    |l, _, r| Expression::BinaryOp(BinaryOp::Iff, Box::new(l), Box::new(r)),
-                ),
-                infix(right(2), just(Token::Implies), |l, _, r| {
-                    Expression::BinaryOp(BinaryOp::Implies, Box::new(l), Box::new(r))
-                }),
-                infix(left(3), just(Token::LogicalOr), |l, _, r| {
-                    Expression::BinaryOp(BinaryOp::Or, Box::new(l), Box::new(r))
-                }),
-                infix(left(4), just(Token::LogicalAnd), |l, _, r| {
-                    Expression::BinaryOp(BinaryOp::And, Box::new(l), Box::new(r))
-                }),
-                infix(left(5), just(Token::Equality), |l, _, r| {
-                    Expression::BinaryOp(BinaryOp::Eq, Box::new(l), Box::new(r))
-                }),
-                infix(left(5), just(Token::NotEqual), |l, _, r| {
-                    Expression::BinaryOp(BinaryOp::Neq, Box::new(l), Box::new(r))
-                }),
-                infix(left(6), just(Token::LessThan), |l, _, r| {
-                    Expression::BinaryOp(BinaryOp::Lt, Box::new(l), Box::new(r))
-                }),
-                infix(left(6), just(Token::LessThanOrEqual), |l, _, r| {
-                    Expression::BinaryOp(BinaryOp::Le, Box::new(l), Box::new(r))
-                }),
-                infix(left(6), just(Token::GreaterThan), |l, _, r| {
-                    Expression::BinaryOp(BinaryOp::Gt, Box::new(l), Box::new(r))
-                }),
-                infix(left(6), just(Token::GreaterThanOrEqual), |l, _, r| {
-                    Expression::BinaryOp(BinaryOp::Ge, Box::new(l), Box::new(r))
-                }),
-                infix(left(7), just(Token::Plus), |l, _, r| {
-                    Expression::BinaryOp(BinaryOp::Add, Box::new(l), Box::new(r))
-                }),
-                infix(left(7), just(Token::Minus), |l, _, r| {
-                    Expression::BinaryOp(BinaryOp::Sub, Box::new(l), Box::new(r))
-                }),
-                infix(left(8), just(Token::Asterisk), |l, _, r| {
-                    Expression::BinaryOp(BinaryOp::Mul, Box::new(l), Box::new(r))
-                }),
-                infix(left(8), just(Token::Div), |l, _, r| {
-                    Expression::BinaryOp(BinaryOp::Div, Box::new(l), Box::new(r))
-                }),
-                infix(left(8), just(Token::Mod), |l, _, r| {
-                    Expression::BinaryOp(BinaryOp::Mod, Box::new(l), Box::new(r))
-                }),
-                infix(right(9), just(Token::Exponentiation), |l, _, r| {
-                    Expression::BinaryOp(BinaryOp::Pow, Box::new(l), Box::new(r))
-                }),
-                // postfix(
-                //     10,
-                //     just(Token::LeftBracket)
-                //         .ignore_then(expr.clone().boxed().separated_by(just(Token::Comma)).collect::<Vec<_>>())
-                //         .then_ignore(just(Token::RightBracket)),
-                //     |e, op| Expression::MapSelect(Box::new(e), op),
-                // ),
-            ))
-            .boxed()
+
+        atom.pratt((
+            prefix(0, just(Token::Minus), |_, e| {
+                Expression::UnaryOp(UnaryOp::Neg, Box::new(e))
+            }),
+            prefix(
+                0,
+                just(Token::NegationSymbol).or(just(Token::ExclamationMark)),
+                |_, e| Expression::UnaryOp(UnaryOp::Not, Box::new(e)),
+            ),
+            infix(
+                left(1),
+                just(Token::DoubleArrow).or(just(Token::LogicalEquivalence)),
+                |l, _, r| Expression::BinaryOp(BinaryOp::Iff, Box::new(l), Box::new(r)),
+            ),
+            infix(right(2), just(Token::Implies), |l, _, r| {
+                Expression::BinaryOp(BinaryOp::Implies, Box::new(l), Box::new(r))
+            }),
+            infix(left(3), just(Token::LogicalOr), |l, _, r| {
+                Expression::BinaryOp(BinaryOp::Or, Box::new(l), Box::new(r))
+            }),
+            infix(left(4), just(Token::LogicalAnd), |l, _, r| {
+                Expression::BinaryOp(BinaryOp::And, Box::new(l), Box::new(r))
+            }),
+            infix(left(5), just(Token::Equality), |l, _, r| {
+                Expression::BinaryOp(BinaryOp::Eq, Box::new(l), Box::new(r))
+            }),
+            infix(left(5), just(Token::NotEqual), |l, _, r| {
+                Expression::BinaryOp(BinaryOp::Neq, Box::new(l), Box::new(r))
+            }),
+            infix(left(6), just(Token::LessThan), |l, _, r| {
+                Expression::BinaryOp(BinaryOp::Lt, Box::new(l), Box::new(r))
+            }),
+            infix(left(6), just(Token::LessThanOrEqual), |l, _, r| {
+                Expression::BinaryOp(BinaryOp::Le, Box::new(l), Box::new(r))
+            }),
+            infix(left(6), just(Token::GreaterThan), |l, _, r| {
+                Expression::BinaryOp(BinaryOp::Gt, Box::new(l), Box::new(r))
+            }),
+            infix(left(6), just(Token::GreaterThanOrEqual), |l, _, r| {
+                Expression::BinaryOp(BinaryOp::Ge, Box::new(l), Box::new(r))
+            }),
+            infix(left(7), just(Token::Plus), |l, _, r| {
+                Expression::BinaryOp(BinaryOp::Add, Box::new(l), Box::new(r))
+            }),
+            infix(left(7), just(Token::Minus), |l, _, r| {
+                Expression::BinaryOp(BinaryOp::Sub, Box::new(l), Box::new(r))
+            }),
+            infix(left(8), just(Token::Asterisk), |l, _, r| {
+                Expression::BinaryOp(BinaryOp::Mul, Box::new(l), Box::new(r))
+            }),
+            infix(left(8), just(Token::Div), |l, _, r| {
+                Expression::BinaryOp(BinaryOp::Div, Box::new(l), Box::new(r))
+            }),
+            infix(left(8), just(Token::Mod), |l, _, r| {
+                Expression::BinaryOp(BinaryOp::Mod, Box::new(l), Box::new(r))
+            }),
+            infix(right(9), just(Token::Exponentiation), |l, _, r| {
+                Expression::BinaryOp(BinaryOp::Pow, Box::new(l), Box::new(r))
+            }),
+            // postfix(
+            //     10,
+            //     just(Token::LeftBracket)
+            //         .ignore_then(expr.clone().boxed().separated_by(just(Token::Comma)).collect::<Vec<_>>())
+            //         .then_ignore(just(Token::RightBracket)),
+            //     |e, op| Expression::MapSelect(Box::new(e), op),
+            // ),
+        ))
+        .boxed()
     })
 }
