@@ -174,6 +174,7 @@ pub enum Literal {
     Bool(bool),
     BitVector(i128, u16),
     String(String),
+    Float(f64),
 }
 
 #[derive(Debug, Clone)]

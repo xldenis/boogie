@@ -794,6 +794,27 @@ where
                 Literal::BitVector(parts[0].parse().unwrap(), parts[1].parse().unwrap())
             )
         },
+        Token::HexFloat(f) => {
+            // TODO: Parse float string
+            Expression::Literal(
+                Literal::Float(
+                    0.0
+            ))
+        },
+        Token::DecFloat(f) => {
+            // TODO: Parse float string
+            Expression::Literal(
+                Literal::Float(
+                    0.0
+            ))
+        },
+        Token::BvFloat(f) => {
+            // TODO: Parse float string
+            Expression::Literal(
+                Literal::Float(
+                    0.0
+            ))
+        },
         Token::String(s) => Expression::Literal(Literal::String(s.to_string())),
         Token::True => Expression::Literal(Literal::Bool(true)),
         Token::False => Expression::Literal(Literal::Bool(false)),
@@ -965,7 +986,7 @@ where
             infix(left(8), just(Token::Asterisk), |l, _, r| {
                 Expression::BinaryOp(BinaryOp::Mul, Box::new(l), Box::new(r))
             }),
-            infix(left(8), just(Token::Div), |l, _, r| {
+            infix(left(8), just(Token::Division), |l, _, r| {
                 Expression::BinaryOp(BinaryOp::Div, Box::new(l), Box::new(r))
             }),
             infix(left(8), just(Token::Mod), |l, _, r| {

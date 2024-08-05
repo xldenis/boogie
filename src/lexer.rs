@@ -24,8 +24,14 @@ pub enum Token<'a> {
     #[regex(r"([0-9]+\.[0-9]+e[-+]?[0-9]+)")]
     DecFloat(&'a str),
 
-    #[regex(r"([0-9]+\.[0-9]+[eE][-+]?[0-9]+[fF])")]
-    Float(&'a str),
+    #[regex(r"b[0-9]+e[-+]?[0-9]+")]
+    BvFloat(&'a str),
+
+    #[regex(r"(0[xX][0-9a-fA-F]+(\.[0-9a-fA-F]*)?([pP][-+]?[0-9]+)?|NaN|nan|[+-]oo)")]
+    HexFloat(&'a str),
+
+    // #[regex(r"([0-9]+\.[0-9]+[eE][-+]?[0-9]+[fF])")]
+    // Float(&'a str),
 
     #[token("yield")]
     Yield,
@@ -264,7 +270,9 @@ impl<'a> fmt::Display for Token<'a> {
             Token::String(s) => write!(f, "{}", s),
             Token::Decimal(s) => write!(f, "{s}"),
             Token::DecFloat(s) => write!(f, "{s}"),
-            Token::Float(s) => write!(f, "{s}"),
+            Token::BvFloat(s) => write!(f, "{s}"),
+            Token::HexFloat(s) => write!(f, "{s}"),
+            // Token::Float(s) => write!(f, "{s}"),
             Token::Yield => write!(f, "yield"),
             Token::Var => write!(f, "var"),
             Token::Semicolon => write!(f, ";"),
