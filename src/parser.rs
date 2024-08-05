@@ -657,7 +657,7 @@ where
                     .delimited_by(just(Token::LeftParen), just(Token::RightParen)),
             ),
         )
-        .map(|(_, ((name, attr), args))| Statement::Call(name, vec![], args));
+        .map(|(_, ((name, _attr), args))| Statement::Call(name, vec![], args));
 
     let cmd = choice((assert, assume, assign, havoc, call))
         .then_ignore(just(Token::Semicolon))
@@ -794,21 +794,21 @@ where
                 Literal::BitVector(parts[0].parse().unwrap(), parts[1].parse().unwrap())
             )
         },
-        Token::HexFloat(f) => {
+        Token::HexFloat(_) => {
             // TODO: Parse float string
             Expression::Literal(
                 Literal::Float(
                     0.0
             ))
         },
-        Token::DecFloat(f) => {
+        Token::DecFloat(_) => {
             // TODO: Parse float string
             Expression::Literal(
                 Literal::Float(
                     0.0
             ))
         },
-        Token::BvFloat(f) => {
+        Token::BvFloat(_) => {
             // TODO: Parse float string
             Expression::Literal(
                 Literal::Float(
@@ -930,7 +930,15 @@ where
             )
             .labelled("map access");
 
-        let atom = choice((map_access, if_, quantifier, lambda));
+        let rounding = select! {
+            Token::RNE => Expression::Rounding,
+            Token::RTN => Expression::Rounding,
+            Token::RNA => Expression::Rounding,
+            Token::RTP => Expression::Rounding,
+            Token::RTZ => Expression::Rounding,
+        };
+
+        let atom = choice((rounding, map_access, if_, quantifier, lambda));
         use chumsky::pratt::*;
 
         atom.pratt((

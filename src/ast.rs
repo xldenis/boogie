@@ -162,6 +162,7 @@ pub enum Expression {
     ),
     Lambda(Vec<Variable>, Box<Expression>),
     If(Box<Expression>, Box<Expression>, Box<Expression>),
+    Rounding
 }
 
 #[derive(Debug, Clone)]

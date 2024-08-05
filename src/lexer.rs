@@ -9,25 +9,34 @@ pub enum Token<'a> {
     #[regex(r"([#$'\.?A-Z^-z~][#$'\.0-9?A-Z^-z~]*)", priority = 2)]
     Ident(&'a str),
 
-    #[regex(r"([0-9]+bv[0-9]+)")]
-    BvLit(&'a str),
-
-    #[regex(r"([0-9]+)")]
-    Digits(&'a str),
-
     #[regex(r#""([^"\\]|\\.)*""#)]
     String(&'a str),
 
-    #[regex(r"([0-9]+\.[0-9]+)")]
+    #[regex(r"([0-9]+bv[0-9]+)")]
+    BvLit(&'a str),
+
+    #[regex(r"[0-9]+")]
+    Digits(&'a str),
+
+
+    #[regex(r"[0-9]+(e[0-9]+)?", priority = 3)]
     Decimal(&'a str),
 
-    #[regex(r"([0-9]+\.[0-9]+e[-+]?[0-9]+)")]
+    #[regex(r"[0-9]+\.[0-9]+|0(NaN|nan)[0-9]+e[0-9]+|0[+-]oo[0-9]+e[0-9]+")]
     DecFloat(&'a str),
 
     #[regex(r"b[0-9]+e[-+]?[0-9]+")]
     BvFloat(&'a str),
 
-    #[regex(r"(0[xX][0-9a-fA-F]+(\.[0-9a-fA-F]*)?([pP][-+]?[0-9]+)?|NaN|nan|[+-]oo)")]
+
+
+    //  float = [ '-' ] '0' 'x' hexdigit {hexdigit} '.' hexdigit {hexdigit} 'e' [ '-' ] digit {digit} 'f' digit {digit} 'e' digit {digit}
+    // | '0' 'N' 'a' 'N' digit {digit} 'e' digit {digit}
+    // | '0' 'n' 'a' 'n' digit {digit} 'e' digit {digit}
+    // | '0' '+' 'o' 'o' digit {digit} 'e' digit {digit}
+    // | '0' '-' 'o' 'o' digit {digit} 'e' digit {digit} .
+    // r"(-?0[x][0-9a-fA-F]+\.[0-9a-f]+e-?[0-9]+f[0-9]+e[0-9]+|0(NaN|nan)[0-9]+e[0-9]|[+-]oo[0-9]+e[0-9])"
+    #[regex(r"0x[0-9a-fA-F]+\.[\-0-9a-f]+")]
     HexFloat(&'a str),
 
     // #[regex(r"([0-9]+\.[0-9]+[eE][-+]?[0-9]+[fF])")]
