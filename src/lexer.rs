@@ -18,8 +18,7 @@ pub enum Token<'a> {
     #[regex(r"[0-9]+")]
     Digits(&'a str),
 
-
-    #[regex(r"[0-9]+(e[0-9]+)?", priority = 3)]
+    #[regex(r"[0-9]+(e-?[0-9]+)?", priority = 3)]
     Decimal(&'a str),
 
     #[regex(r"[0-9]+\.[0-9]+|0(NaN|nan)[0-9]+e[0-9]+|0[+-]oo[0-9]+e[0-9]+")]
@@ -27,8 +26,6 @@ pub enum Token<'a> {
 
     #[regex(r"b[0-9]+e[-+]?[0-9]+")]
     BvFloat(&'a str),
-
-
 
     //  float = [ '-' ] '0' 'x' hexdigit {hexdigit} '.' hexdigit {hexdigit} 'e' [ '-' ] digit {digit} 'f' digit {digit} 'e' digit {digit}
     // | '0' 'N' 'a' 'N' digit {digit} 'e' digit {digit}
@@ -41,7 +38,6 @@ pub enum Token<'a> {
 
     // #[regex(r"([0-9]+\.[0-9]+[eE][-+]?[0-9]+[fF])")]
     // Float(&'a str),
-
     #[token("yield")]
     Yield,
     #[token("var")]

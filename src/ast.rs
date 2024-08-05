@@ -108,7 +108,16 @@ pub struct ImplementationDecl {
 }
 
 #[derive(Debug, Clone)]
+pub enum Mover {
+    Atomic,
+    Both,
+    Left,
+    Right,
+}
+
+#[derive(Debug, Clone)]
 pub struct ActionDecl {
+    pub mover: Mover,
     pub signature: Signature,
     pub body: ImplBlock,
     pub attributes: Vec<Attribute>,
@@ -122,13 +131,17 @@ pub struct YieldInvariantDecl {
 }
 
 #[derive(Debug, Clone)]
+pub struct YieldSpecifications {
+    pub requires: Vec<Requires>,
+    pub modifies: Vec<String>,
+    pub ensures: Vec<Ensures>,
+    pub refines: Vec<String>,
+}
+
+#[derive(Debug, Clone)]
 pub struct YieldProcedureDecl {
     pub signature: Signature,
-    pub requires: Vec<Requires>,
-    pub yield_requires: Vec<Expression>,
-    pub yield_ensures: Vec<Expression>,
-    pub yield_preserves: Vec<Expression>,
-    pub ensures: Vec<Ensures>,
+    pub spec: YieldSpecifications,
     pub body: Option<ImplBlock>,
 }
 
@@ -162,7 +175,7 @@ pub enum Expression {
     ),
     Lambda(Vec<Variable>, Box<Expression>),
     If(Box<Expression>, Box<Expression>, Box<Expression>),
-    Rounding
+    Rounding,
 }
 
 #[derive(Debug, Clone)]
