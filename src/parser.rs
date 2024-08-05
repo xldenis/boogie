@@ -642,7 +642,24 @@ where
         .ignore_then(ident().separated_by(just(Token::Comma)).collect())
         .map(|ids| Statement::Havoc(ids));
 
-    let cmd = choice((assert, assume, assign, havoc))
+    let call = just(Token::Call)
+        .ignore_then(
+            (ident()
+                .separated_by(just(Token::Comma))
+                .then_ignore(just(Token::Assign)))
+            .or_not(),
+        )
+        .then(
+            ident().then(attribute().or_not()).then(
+                expression()
+                    .separated_by(just(Token::Comma))
+                    .collect()
+                    .delimited_by(just(Token::LeftParen), just(Token::RightParen)),
+            ),
+        )
+        .map(|(_, ((name, attr), args))| Statement::Call(name, vec![], args));
+
+    let cmd = choice((assert, assume, assign, havoc, call))
         .then_ignore(just(Token::Semicolon))
         .boxed();
 
@@ -682,14 +699,27 @@ where
                     .collect()
                     .delimited_by(just(Token::LeftBrace), just(Token::RightBrace)),
             )
-            .map(|(e, then)| {
+            .then(
+                (just(Token::Else).ignore_then(
+                    stmt.clone()
+                        .repeated()
+                        .collect::<Vec<_>>()
+                        .delimited_by(just(Token::LeftBrace), just(Token::RightBrace)),
+                ))
+                .map(|stmts| ImplBlock {
+                    local_vars: Vec::new(),
+                    statements: stmts,
+                })
+                .or_not(),
+            )
+            .map(|((e, then), else_)| {
                 Statement::If(
                     e,
                     ImplBlock {
                         local_vars: Vec::new(),
                         statements: then,
                     },
-                    None,
+                    else_,
                 )
             });
 
@@ -805,10 +835,15 @@ where
             quantifier_type
                 .then(bound_vars)
                 .then_ignore(just(Token::DoubleColon))
-                .then(trigger)
+                .then(trigger.or_not())
                 .then(expr.clone())
                 .map(|(((quantifier, vars), trigger), body)| {
-                    Expression::Quantifier(quantifier, vars, Box::new(trigger), Box::new(body))
+                    Expression::Quantifier(
+                        quantifier,
+                        vars,
+                        trigger.into_iter().collect(),
+                        Box::new(body),
+                    )
                 })
         };
 

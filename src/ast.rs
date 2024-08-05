@@ -157,7 +157,7 @@ pub enum Expression {
     Quantifier(
         Quantifier,
         Vec<(String, Type)>,
-        Box<Trigger>,
+        Vec<Trigger>,
         Box<Expression>,
     ),
     Lambda(Vec<Variable>, Box<Expression>),
