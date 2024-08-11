@@ -27,7 +27,7 @@ where
         procedure_decl().map(Declaration::Procedure),
         implementation_decl().map(Declaration::Implementation),
         action_decl().map(Declaration::Action),
-        // yield_invariant_decl().map(Declaration::YieldInvariant),
+        yield_invariant_decl().map(Declaration::YieldInvariant),
         yield_procedure_decl().map(Declaration::YieldProcedure),
     ))
 }
@@ -56,6 +56,7 @@ where
         axioms: axioms.unwrap_or_default(),
         attributes: attrs,
     })
+    .boxed()
 }
 
 fn function_decl<'a, I>() -> impl Parser<'a, I, FunctionDecl, Err<Rich<'a, Token<'a>>>>
@@ -84,18 +85,21 @@ where
                 attributes: attrs, //         axioms: axioms.unwrap_or_default(),
             }
         })
+        .boxed()
 }
 
 fn uses<'a, I>() -> impl Parser<'a, I, Vec<Axiom>, Err<Rich<'a, Token<'a>>>>
 where
     I: ValueInput<'a, Token = Token<'a>, Span = SimpleSpan>,
 {
-    just(Token::Uses).ignore_then(
-        axiom_decl()
-            .repeated()
-            .collect()
-            .delimited_by(just(Token::LeftBrace), just(Token::RightBrace)),
-    )
+    just(Token::Uses)
+        .ignore_then(
+            axiom_decl()
+                .repeated()
+                .collect()
+                .delimited_by(just(Token::LeftBrace), just(Token::RightBrace)),
+        )
+        .boxed()
 }
 
 fn axiom_decl<'a, I>() -> impl Parser<'a, I, Axiom, Err<Rich<'a, Token<'a>>>>
@@ -115,6 +119,7 @@ where
             expression: expr,
             attributes: attrs,
         })
+        .boxed()
 }
 
 fn ids_type<'a, I>() -> impl Parser<'a, I, Vec<(String, Type)>, Err<Rich<'a, Token<'a>>>>
@@ -137,7 +142,15 @@ where
     I: ValueInput<'a, Token = Token<'a>, Span = SimpleSpan>,
 {
     select! {
-        Token::Ident(s) => s.into()
+        Token::Ident(s) => s.into(),
+        Token::Atomic => "atomic".into(),
+        Token::Both => "both".into(),
+        Token::Left => "left".into(),
+        Token::Right => "right".into(),
+        Token::Reveal => "reveal".into(),
+        Token::Hide => "hide".into(),
+        Token::Push => "push".into(),
+        Token::Pop => "pop".into()
     }
     .labelled("identifier")
 }
@@ -166,6 +179,7 @@ where
             body,
             attributes: attrs,
         })
+        .boxed()
 }
 
 fn datatype_decl<'a, I>() -> impl Parser<'a, I, DatatypeDecl, Err<Rich<'a, Token<'a>>>>
@@ -181,7 +195,9 @@ where
         .or_not()
         .map(|params| params.unwrap_or_default());
 
-    let field = select! { Token::Ident(name) => name.to_string() }
+    let field = attribute()
+        .repeated()
+        .ignore_then(ident())
         .then_ignore(just(Token::Colon))
         .then(type_expr())
         .map(|(name, typ)| Variable {
@@ -190,7 +206,7 @@ where
             where_clause: None,
         });
 
-    let constructor = select! { Token::Ident(name) => name.to_string() }
+    let constructor = ident()
         .then(
             field
                 .separated_by(just(Token::Comma))
@@ -202,7 +218,7 @@ where
         .map(|(name, fields)| DatatypeConstructor { name, fields });
 
     let constructors = constructor
-        .separated_by(just(Token::VerticalBar))
+        .separated_by(just(Token::Comma))
         .collect()
         .delimited_by(just(Token::LeftBrace), just(Token::RightBrace));
 
@@ -210,7 +226,7 @@ where
 
     just(Token::Datatype)
         .ignore_then(attributes)
-        .then(select! { Token::Ident(name) => name.to_string() })
+        .then(ident())
         .then(type_params)
         .then(constructors)
         // .then_ignore(just(Token::Semicolon))
@@ -222,6 +238,7 @@ where
                 attributes: attrs,
             },
         )
+        .boxed()
 }
 
 fn global_var_decl<'a, I>() -> impl Parser<'a, I, GlobalVarDecl, Err<Rich<'a, Token<'a>>>>
@@ -243,6 +260,7 @@ where
             where_,
             attributes: attrs,
         })
+        .boxed()
 }
 
 fn procedure_decl<'a, I>() -> impl Parser<'a, I, ProcedureDecl, Err<Rich<'a, Token<'a>>>>
@@ -272,6 +290,7 @@ where
                 attributes,
             },
         )
+        .boxed()
 }
 
 fn implementation_decl<'a, I>() -> impl Parser<'a, I, ImplementationDecl, Err<Rich<'a, Token<'a>>>>
@@ -289,6 +308,7 @@ where
             body,
             attributes,
         })
+        .boxed()
 }
 
 fn mover<'a, I>() -> impl Parser<'a, I, Mover, Err<Rich<'a, Token<'a>>>>
@@ -311,20 +331,18 @@ where
 
     let attributes = attribute().repeated().collect::<Vec<_>>();
     let is_async = just(Token::Async).or_not().map(|x| x.is_some());
+    let is_pure = just(Token::Pure).or_not().map(|x| x.is_some());
     let mover_type = mover_qualifier.or_not();
 
-    (is_async
+    (is_pure
+        .ignored()
+        .then(is_async)
         .then(mover_type)
         .then(just(Token::Action))
         .ignore_then(attributes)
         .then(proc_signature())
-        .then_ignore(spec())
-        .then(
-            // spec_action()
-            //     .repeated()
-            //     .collect()
-            block(), // .or(just(Token::Semicolon).to((vec![], None))),
-        ))
+        .then_ignore(action_spec())
+        .then(block()))
     .map(|((attrs, signature), _)| ActionDecl {
         // is_async,
         mover: Mover::Atomic,
@@ -336,30 +354,37 @@ where
         },
         attributes: attrs,
     })
+    .boxed()
 }
 
-// fn yield_invariant_decl<'a, I>() -> impl Parser<'a, I, YieldInvariantDecl, Err<Rich<'a, Token<'a>>>>
-// where
-//     I: ValueInput<'a, Token = Token<'a>, Span = SimpleSpan>,
-// {
-//     let attributes = attribute().repeated().collect();
+fn yield_invariant_decl<'a, I>() -> impl Parser<'a, I, YieldInvariantDecl, Err<Rich<'a, Token<'a>>>>
+where
+    I: ValueInput<'a, Token = Token<'a>, Span = SimpleSpan>,
+{
+    let attributes = attribute().repeated().collect::<Vec<Attribute>>();
 
-//     just(Token::Yield)
-//         .then(just(Token::Invariant))
-//         .ignore_then(attributes)
-//         .then(select! { Token::Ident(name) => name.to_string() })
-//         .then(proc_formals())
-//         .then_ignore(just(Token::Semicolon))
-//         .then(invariant().repeated().collect())
-//         .map(
-//             |(((attrs, name), formals), invariants)| YieldInvariantDecl {
-//                 name,
-//                 formals,
-//                 invariants,
-//                 attributes: attrs,
-//             },
-//         )
-// }
+    let invariant_ = just(Token::Invariant)
+        .then_ignore(attribute().or_not())
+        .ignore_then(expression())
+        .then_ignore(just(Token::Semicolon));
+
+    just(Token::Yield)
+        .then(just(Token::Invariant))
+        .ignore_then(attributes)
+        .then(ident())
+        .then(formal_args().delimited_by(just(Token::LeftParen), just(Token::RightParen)))
+        .then_ignore(just(Token::Semicolon))
+        .then(invariant_.repeated().collect())
+        .map(
+            |(((_attrs, name), params), invariants)| YieldInvariantDecl {
+                name,
+                params,
+                invariants,
+                // attributes: attrs,
+            },
+        )
+        .boxed()
+}
 
 fn yield_procedure_decl<'a, I>() -> impl Parser<'a, I, YieldProcedureDecl, Err<Rich<'a, Token<'a>>>>
 where
@@ -386,6 +411,7 @@ where
             spec,
             body,
         })
+        .boxed()
 }
 
 //
@@ -393,7 +419,19 @@ fn formal_args<'a, I>() -> impl Parser<'a, I, Vec<FormalArg>, Err<Rich<'a, Token
 where
     I: ValueInput<'a, Token = Token<'a>, Span = SimpleSpan>,
 {
-    let formal_arg = ident()
+    formal_args_inner(expression())
+}
+
+fn formal_args_inner<'a, I>(
+    expr: impl Parser<'a, I, Expression, Err<Rich<'a, Token<'a>>>> + Clone,
+) -> impl Parser<'a, I, Vec<FormalArg>, Err<Rich<'a, Token<'a>>>>
+where
+    I: ValueInput<'a, Token = Token<'a>, Span = SimpleSpan>,
+{
+    let formal_arg = attribute_inner(expr.clone())
+        .repeated()
+        .ignored()
+        .ignore_then(ident())
         .separated_by(just(Token::Comma))
         .collect::<Vec<_>>()
         .then_ignore(just(Token::Colon))
@@ -410,7 +448,7 @@ where
             }
         });
 
-    (attribute().or_not().ignore_then(formal_arg))
+    formal_arg
         .separated_by(just(Token::Comma))
         .collect::<Vec<_>>()
         .map(|v: Vec<_>| v.into_iter().flatten().collect())
@@ -421,30 +459,21 @@ where
     I: ValueInput<'a, Token = Token<'a>, Span = SimpleSpan>,
 {
     let returns = just(Token::Returns)
-        .ignore_then(
-            formal_args()
-                // formal_arg()
-                //     .or_not()
-                .delimited_by(just(Token::LeftParen), just(Token::RightParen)),
-        )
+        .ignore_then(formal_args().delimited_by(just(Token::LeftParen), just(Token::RightParen)))
         .map(|_| ());
 
     let anon_return = just(Token::Colon)
         .ignore_then(type_expr())
         .map(FormalArg::Anon)
         .map(|_| ());
-    // .map(Some);
 
+    let ty_params = ident()
+        .map(|i| TypeVariable { name: i })
+        .separated_by(just(Token::Comma))
+        .collect()
+        .delimited_by(just(Token::LessThan), just(Token::GreaterThan));
     ident()
-        .then(
-            ident()
-                .map(|i| TypeVariable { name: i })
-                .separated_by(just(Token::Comma))
-                .collect()
-                .delimited_by(just(Token::LessThan), just(Token::GreaterThan))
-                .or_not()
-                .map(|tys| tys.unwrap_or_default()),
-        )
+        .then(ty_params.or_not().map(|tys| tys.unwrap_or_default()))
         .then(formal_args().delimited_by(just(Token::LeftParen), just(Token::RightParen)))
         .then(
             returns.or(anon_return).or_not(), // .map(|a| a.flatten())
@@ -467,7 +496,11 @@ where
             // .collect()
             .delimited_by(just(Token::LeftParen), just(Token::RightParen)),
     );
-    let refns = just(Token::Refines).ignore_then(ident()).ignored();
+    let refns = just(Token::Refines)
+        .ignore_then(attribute().or_not().ignored())
+        .ignore_then(ident())
+        .then_ignore((just(Token::Using).then(ident())).or_not())
+        .ignored();
     let req = just(Token::Requires)
         .then(attribute().or_not())
         .then(expression())
@@ -483,17 +516,75 @@ where
         .ignore_then(just(Token::Call))
         .then(function_call.clone())
         .ignored();
+    let ens_call = just(Token::Ensures)
+        .ignore_then(just(Token::Call))
+        .then(function_call.clone())
+        .ignored();
+    let preserves = just(Token::Preserves)
+        .then(just(Token::Call))
+        .ignore_then(function_call.clone())
+        .ignored();
 
-    let specs = choice((refns, req, ens, modf, req_call))
+    let specs = choice((refns, req, ens, modf, req_call, ens_call, preserves))
         .then_ignore(just(Token::Semicolon))
         .repeated();
-    specs.map(|_refn| YieldSpecifications {
-        requires: vec![],
-        modifies: vec![],
-        ensures: vec![],
-        refines: vec![],
-    })
+    specs
+        .map(|_refn| YieldSpecifications {
+            requires: vec![],
+            modifies: vec![],
+            ensures: vec![],
+            refines: vec![],
+        })
+        .boxed()
 }
+
+fn action_spec<'a, I>() -> impl Parser<'a, I, ActionSpecifications, Err<Rich<'a, Token<'a>>>>
+where
+    I: ValueInput<'a, Token = Token<'a>, Span = SimpleSpan>,
+{
+    let function_call = ident().then(
+        expression()
+            .separated_by(just(Token::Comma))
+            // .collect()
+            .delimited_by(just(Token::LeftParen), just(Token::RightParen)),
+    );
+    let refns = just(Token::Refines)
+        .ignore_then(attribute().or_not())
+        .ignore_then(ident())
+        .then_ignore((just(Token::Using).then(ident())).or_not())
+        .ignored();
+    let req = just(Token::Requires)
+        .then(attribute().or_not())
+        .then(expression())
+        .ignored();
+    let modf = just(Token::Modifies)
+        .then(ident().separated_by(just(Token::Comma)))
+        .ignored();
+    let req_call = just(Token::Requires)
+        .ignore_then(just(Token::Call))
+        .then(function_call.clone())
+        .ignored();
+
+    let create = just(Token::Creates)
+        .ignore_then(ident().separated_by(just(Token::Comma)))
+        .ignored();
+
+    let asserts = just(Token::Asserts).ignore_then(expression()).ignored();
+
+    let specs = choice((refns, req, create, asserts, modf, req_call))
+        .then_ignore(just(Token::Semicolon))
+        .repeated();
+    specs
+        .map(|_refn| ActionSpecifications {
+            requires: vec![],
+            modifies: vec![],
+            refines: vec![],
+            asserts: vec![],
+            creates: vec![],
+        })
+        .boxed()
+}
+
 fn spec<'a, I>() -> impl Parser<'a, I, Specifications, Err<Rich<'a, Token<'a>>>>
 where
     I: ValueInput<'a, Token = Token<'a>, Span = SimpleSpan>,
@@ -548,6 +639,7 @@ where
                 ensures,
             }
         })
+        .boxed()
 }
 
 // fn mover_qualifier<'a, I>() -> impl Parser<'a, I, MoverType, Err<Rich<'a, Token<'a>>>>
@@ -727,30 +819,42 @@ where
         .ignore_then(ident().separated_by(just(Token::Comma)).collect())
         .map(|ids| Statement::Havoc(ids));
 
+    let call_expr = attribute()
+        .or_not()
+        .ignore_then(ident())
+        .then(attribute().or_not())
+        .then(
+            expression()
+                .separated_by(just(Token::Comma))
+                .collect()
+                .delimited_by(just(Token::LeftParen), just(Token::RightParen)),
+        )
+        .boxed();
+
     let call = just(Token::Async)
         .or_not()
         .ignore_then(just(Token::Call))
+        .ignore_then(attribute().or_not())
         .ignore_then(
             (ident()
                 .separated_by(just(Token::Comma))
                 .then_ignore(just(Token::Assign)))
             .or_not(),
         )
-        .then(
-            attribute()
-                .or_not()
-                .ignore_then(ident())
-                .then(attribute().or_not())
-                .then(
-                    expression()
-                        .separated_by(just(Token::Comma))
-                        .collect()
-                        .delimited_by(just(Token::LeftParen), just(Token::RightParen)),
-                ),
-        )
+        .then(call_expr.clone())
         .map(|(_, ((name, _attr), args))| Statement::Call(name, vec![], args));
+    let par = just(Token::Par)
+        .ignore_then(
+            ((ident()
+                .separated_by(just(Token::Comma))
+                .then_ignore(just(Token::Assign)))
+            .or_not()
+            .then(call_expr.clone()))
+            .separated_by(just(Token::VerticalBar)),
+        )
+        .map(|_calls| Statement::Par);
 
-    let cmd = choice((assert, assume, assign, havoc, call))
+    let cmd = choice((assert, assume, assign, havoc, call, par))
         .then_ignore(just(Token::Semicolon))
         .boxed();
 
@@ -782,26 +886,30 @@ where
         .delimited_by(just(Token::LeftParen), just(Token::RightParen));
 
     recursive(|stmt| {
+        let stmt_braced = stmt
+            .clone()
+            .repeated()
+            .collect::<Vec<_>>()
+            .delimited_by(just(Token::LeftBrace), just(Token::RightBrace));
         let if_stmt = just(Token::If)
             .ignore_then(star_or_exp.clone())
-            .then(
-                stmt.clone()
-                    .repeated()
-                    .collect()
-                    .delimited_by(just(Token::LeftBrace), just(Token::RightBrace)),
+            .then(stmt_braced.clone())
+            .then_ignore(
+                // TODO: unignore this part of if statments
+                (just(Token::Else).ignore_then(
+                    just(Token::If)
+                        .ignore_then(star_or_exp.clone())
+                        .then(stmt_braced.clone()),
+                ))
+                .repeated(),
             )
             .then(
-                (just(Token::Else).ignore_then(
-                    stmt.clone()
-                        .repeated()
-                        .collect::<Vec<_>>()
-                        .delimited_by(just(Token::LeftBrace), just(Token::RightBrace)),
-                ))
-                .map(|stmts| ImplBlock {
-                    local_vars: Vec::new(),
-                    statements: stmts,
-                })
-                .or_not(),
+                (just(Token::Else).ignore_then(stmt_braced))
+                    .map(|stmts| ImplBlock {
+                        local_vars: Vec::new(),
+                        statements: stmts,
+                    })
+                    .or_not(),
             )
             .map(|((e, then), else_)| {
                 Statement::If(
@@ -815,7 +923,12 @@ where
             });
 
         let invariant_ = just(Token::Invariant)
-            .ignore_then(expression())
+            .then_ignore(attribute().or_not())
+            .ignore_then(
+                expression().map(Invariant::Expression).or(just(Token::Call)
+                    .ignore_then(call_expr)
+                    .map(|((name, _), args)| Invariant::Call(name, args))),
+            )
             .then_ignore(just(Token::Semicolon));
 
         let while_ = just(Token::While)
@@ -858,6 +971,7 @@ where
         .map(|(ids, ty)| ids.into_iter().map(|i| (i, ty.clone())).collect::<Vec<_>>());
 
     just(Token::Var)
+        .then_ignore(attribute().repeated())
         .ignore_then(
             ids_ty_pair
                 .separated_by(just(Token::Comma))
@@ -873,10 +987,7 @@ fn expression<'a, I>() -> impl Parser<'a, I, Expression, Err<Rich<'a, Token<'a>>
 where
     I: ValueInput<'a, Token = Token<'a>, Span = SimpleSpan>,
 {
-    let variable = select! {
-        Token::Ident(name) => Expression::Var(name.to_string())
-    }
-    .labelled("variable");
+    let variable = ident().map(Expression::Var).labelled("variable");
 
     let literal = select! {
         Token::Digits(n) => Expression::Literal(Literal::Int(n.parse().unwrap())),
@@ -917,20 +1028,11 @@ where
 
     recursive(|expr| {
         let lambda = {
-            let bound_var = select! { Token::Ident(name) => name.to_string() }
-                .then_ignore(just(Token::Colon))
-                .then(type_expr())
-                .map(|(name, typ)| Variable {
-                    name,
-                    typ,
-                    where_clause: None,
-                });
-
             just(Token::Lambda)
-                .ignore_then(bound_var.separated_by(just(Token::Comma)).collect())
+                .ignore_then(formal_args_inner(expr.clone()))
                 .then_ignore(just(Token::DoubleColon))
                 .then(expr.clone())
-                .map(|(vars, body)| Expression::Lambda(vars, Box::new(body)))
+                .map(|(_vars, body)| Expression::Lambda(vec![], Box::new(body)))
         };
         let quantifier = {
             let quantifier_type = choice((
@@ -972,8 +1074,7 @@ where
                 .map(|((e, t), f)| Expression::If(Box::new(e), Box::new(t), Box::new(f)))
         };
 
-        let parenthesized = expr
-            .clone()
+        let parenthesized = choice((expr.clone(), quantifier, lambda))
             .delimited_by(just(Token::LeftParen), just(Token::RightParen));
 
         let old = just(Token::Old)
@@ -1046,7 +1147,7 @@ where
             Token::RTZ => Expression::Rounding,
         };
 
-        let atom = choice((rounding, map_access, if_, quantifier, lambda));
+        let atom = choice((rounding, map_access, if_));
         use chumsky::pratt::*;
 
         atom.pratt((
@@ -1116,16 +1217,23 @@ where
             postfix(10, just(Token::Arrow).ignore_then(ident()), |l, f| {
                 Expression::Field(Box::new(l), f)
             }),
-            postfix(10, just(Token::Colon).ignore_then(type_expr()), |op, ty| {
-                // TODO
-                op
-            }), // postfix(
-                //     10,
-                //     just(Token::LeftBracket)
-                //         .ignore_then(expr.clone().boxed().separated_by(just(Token::Comma)).collect::<Vec<_>>())
-                //         .then_ignore(just(Token::RightBracket)),
-                //     |e, op| Expression::MapSelect(Box::new(e), op),
-                // ),
+            postfix(10, just(Token::Is).ignore_then(ident()), |l, f| {
+                Expression::Is(Box::new(l), f)
+            }),
+            postfix(
+                10,
+                just(Token::Colon).ignore_then(type_expr()),
+                |op, _ty| {
+                    // TODO
+                    op
+                },
+            ), // postfix(
+               //     10,
+               //     just(Token::LeftBracket)
+               //         .ignore_then(expr.clone().boxed().separated_by(just(Token::Comma)).collect::<Vec<_>>())
+               //         .then_ignore(just(Token::RightBracket)),
+               //     |e, op| Expression::MapSelect(Box::new(e), op),
+               // ),
         ))
         .boxed()
     })

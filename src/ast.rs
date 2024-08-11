@@ -126,7 +126,7 @@ pub struct ActionDecl {
 #[derive(Debug, Clone)]
 pub struct YieldInvariantDecl {
     pub name: String,
-    pub params: Vec<Variable>,
+    pub params: Vec<FormalArg>,
     pub invariants: Vec<Expression>,
 }
 
@@ -136,6 +136,15 @@ pub struct YieldSpecifications {
     pub modifies: Vec<String>,
     pub ensures: Vec<Ensures>,
     pub refines: Vec<String>,
+}
+
+#[derive(Debug, Clone)]
+pub struct ActionSpecifications {
+    pub requires: Vec<Requires>,
+    pub modifies: Vec<String>,
+    pub asserts: Vec<Ensures>,
+    pub refines: Vec<String>,
+    pub creates : Vec<String>,
 }
 
 #[derive(Debug, Clone)]
@@ -176,6 +185,7 @@ pub enum Expression {
     Lambda(Vec<Variable>, Box<Expression>),
     If(Box<Expression>, Box<Expression>, Box<Expression>),
     Rounding,
+    Is(Box<Expression>, String),
 }
 
 #[derive(Debug, Clone)]
@@ -253,10 +263,17 @@ pub enum Statement {
     Havoc(Vec<String>),
     Call(String, Vec<Expression>, Vec<Expression>),
     If(Option<Expression>, ImplBlock, Option<ImplBlock>),
-    While(Option<Expression>, Vec<Expression>, ImplBlock),
+    While(Option<Expression>, Vec<Invariant>, ImplBlock),
     Break(Option<String>),
     Goto(Vec<String>),
+    Par,
     Return,
+}
+
+#[derive(Debug, Clone)]
+pub enum Invariant {
+    Expression(Expression),
+    Call(String, Vec<Expression>),
 }
 
 #[derive(Debug, Clone)]
