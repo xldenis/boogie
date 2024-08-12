@@ -1,4 +1,4 @@
-# :dancing_man: Boogie :dancing_man:
+# :man_dancing: Boogie :man_dancing:
 
 A (not yet) complete implementation of the [Boogie](https://github.com/boogie-org/boogie) grammar, with a parser and pretty printer.
 
