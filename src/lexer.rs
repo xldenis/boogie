@@ -3,7 +3,7 @@ use logos::{FilterResult, Lexer, Logos};
 #[derive(Logos, Debug, PartialEq, Copy, Clone)]
 #[logos(skip r"[ \t\n\f]+")] // Ignore whitespace
 #[logos(skip r"//.*")] // Ignore line comments
-// #[logos(skip r"\/\*([^*]|\*[^\/])+\*\/")] // Ignore block comments
+                       // #[logos(skip r"\/\*([^*]|\*[^\/])+\*\/")] // Ignore block comments
 pub enum Token<'a> {
     #[token("/*", multiline_comment)]
     MultiComment,
@@ -264,7 +264,6 @@ pub enum Token<'a> {
     Bullet,
 }
 
-
 // TODO: Handle nested ocmments
 fn multiline_comment<'a>(lex: &mut Lexer<'a, Token<'a>>) -> FilterResult<(), ()> {
     enum State {
@@ -419,7 +418,7 @@ impl<'a> fmt::Display for Token<'a> {
             Token::LambdaSymbol => write!(f, "λ"),
             Token::DoubleColon => write!(f, "::"),
             Token::Bullet => write!(f, "•"),
-            Token::MultiComment => write!(f, "comment")
+            Token::MultiComment => write!(f, "comment"),
         }
     }
 }

@@ -1096,7 +1096,12 @@ where
                 .then_ignore(ty_vars.or_not())
                 .then(bound_vars)
                 .then_ignore(just(Token::DoubleColon))
-                .then(attr.map(AorT::A).or(trigger.map(AorT::T)).repeated().collect::<Vec<_>>())
+                .then(
+                    attr.map(AorT::A)
+                        .or(trigger.map(AorT::T))
+                        .repeated()
+                        .collect::<Vec<_>>(),
+                )
                 .then(expr.clone())
                 .map(|(((quantifier, vars), aorts), body)| {
                     let mut triggers = Vec::new();

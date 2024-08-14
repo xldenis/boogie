@@ -34,12 +34,12 @@ pub struct FunctionDecl {
     pub attributes: Vec<Attribute>,
 }
 
-#[derive(Debug, Clone)]
-pub struct AxiomDecl {
-    pub hideable: bool,
-    pub expression: Expression,
-    pub attributes: Vec<Attribute>,
-}
+// #[derive(Debug, Clone)]
+// pub struct AxiomDecl {
+//     pub hideable: bool,
+//     pub expression: Expression,
+//     pub attributes: Vec<Attribute>,
+// }
 
 #[derive(Debug, Clone)]
 pub struct TypeDecl {
@@ -144,7 +144,7 @@ pub struct ActionSpecifications {
     pub modifies: Vec<String>,
     pub asserts: Vec<Ensures>,
     pub refines: Vec<String>,
-    pub creates : Vec<String>,
+    pub creates: Vec<String>,
 }
 
 #[derive(Debug, Clone)]
@@ -188,7 +188,12 @@ pub enum Expression {
     If(Box<Expression>, Box<Expression>, Box<Expression>),
     Rounding,
     Is(Box<Expression>, String),
-    Let(Vec<(Vec<Attribute>, String)>, Vec<Expression>, Vec<Attribute>, Box<Expression>),
+    Let(
+        Vec<(Vec<Attribute>, String)>,
+        Vec<Expression>,
+        Vec<Attribute>,
+        Box<Expression>,
+    ),
 }
 
 #[derive(Debug, Clone)]
