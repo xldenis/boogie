@@ -4,5 +4,5 @@ A (not yet) complete implementation of the [Boogie](https://github.com/boogie-or
 
 This includes the asynchronous extensions introduced by CIVL.
 
-As of this latest commit, there are 21 / 147 failing input files (compared against the boogie test suite).
+As of this latest commit, there are 140 / 568 failing input files (compared against the boogie test suite).
 
