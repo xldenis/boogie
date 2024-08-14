@@ -174,7 +174,7 @@ pub enum Expression {
     FunctionCall(String, Vec<Expression>),
     MapSelect(Box<Expression>, Vec<Expression>),
     BvExtract(Box<Expression>, Box<Expression>, Box<Expression>),
-    MapUpdate(Box<Expression>, Box<Expression>, Box<Expression>),
+    MapUpdate(Box<Expression>, Vec<Expression>, Box<Expression>),
     Old(Box<Expression>),
     Quantifier(
         Quantifier,
@@ -182,10 +182,13 @@ pub enum Expression {
         Vec<Trigger>,
         Box<Expression>,
     ),
+    IntCast(Box<Expression>),
+    RealCast(Box<Expression>),
     Lambda(Vec<Variable>, Box<Expression>),
     If(Box<Expression>, Box<Expression>, Box<Expression>),
     Rounding,
     Is(Box<Expression>, String),
+    Let(Vec<(Vec<Attribute>, String)>, Vec<Expression>, Vec<Attribute>, Box<Expression>),
 }
 
 #[derive(Debug, Clone)]
@@ -268,6 +271,7 @@ pub enum Statement {
     Goto(Vec<String>),
     Par,
     Return,
+    Unpack((String, Vec<String>), Expression),
 }
 
 #[derive(Debug, Clone)]

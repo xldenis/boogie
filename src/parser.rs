@@ -341,9 +341,12 @@ where
         .then(just(Token::Action))
         .ignore_then(attributes)
         .then(proc_signature())
-        .then_ignore(action_spec())
-        .then(block()))
-    .map(|((attrs, signature), _)| ActionDecl {
+        .then(
+            just(Token::Semicolon)
+                .ignore_then(action_spec().map(|s| (s, None)))
+                .or(action_spec().then(block().map(|b| Some(b)))),
+        ))
+    .map(|((attrs, signature), (_, _))| ActionDecl {
         // is_async,
         mover: Mover::Atomic,
         signature,
@@ -364,7 +367,7 @@ where
     let attributes = attribute().repeated().collect::<Vec<Attribute>>();
 
     let invariant_ = just(Token::Invariant)
-        .then_ignore(attribute().or_not())
+        .then_ignore(attribute().repeated())
         .ignore_then(expression())
         .then_ignore(just(Token::Semicolon));
 
@@ -437,6 +440,7 @@ where
         .then_ignore(just(Token::Colon))
         .or_not()
         .then(type_expr())
+        .then_ignore(just(Token::Where).then(expr.clone()).or_not())
         .map(|(ids, ty)| {
             let ids = ids.unwrap_or_default();
             if ids.is_empty() {
@@ -497,16 +501,16 @@ where
             .delimited_by(just(Token::LeftParen), just(Token::RightParen)),
     );
     let refns = just(Token::Refines)
-        .ignore_then(attribute().or_not().ignored())
+        .ignore_then(attribute().repeated())
         .ignore_then(ident())
         .then_ignore((just(Token::Using).then(ident())).or_not())
         .ignored();
     let req = just(Token::Requires)
-        .then(attribute().or_not())
+        .then(attribute().repeated())
         .then(expression())
         .ignored();
     let ens = just(Token::Ensures)
-        .then(attribute().or_not())
+        .then(attribute().repeated())
         .then(expression())
         .ignored();
     let modf = just(Token::Modifies)
@@ -554,7 +558,7 @@ where
         .then_ignore((just(Token::Using).then(ident())).or_not())
         .ignored();
     let req = just(Token::Requires)
-        .then(attribute().or_not())
+        .then(attribute().repeated())
         .then(expression())
         .ignored();
     let modf = just(Token::Modifies)
@@ -569,7 +573,10 @@ where
         .ignore_then(ident().separated_by(just(Token::Comma)))
         .ignored();
 
-    let asserts = just(Token::Asserts).ignore_then(expression()).ignored();
+    let asserts = just(Token::Asserts)
+        .ignore_then(attribute().repeated())
+        .ignore_then(expression())
+        .ignored();
 
     let specs = choice((refns, req, create, asserts, modf, req_call))
         .then_ignore(just(Token::Semicolon))
@@ -597,13 +604,19 @@ where
 
     let semi = just(Token::Semicolon);
 
-    let req = just(Token::Requires)
-        .ignore_then(just(Token::Free).or_not().map(|a| a.is_some()))
+    let req = just(Token::Free)
+        .or_not()
+        .map(|a| a.is_some())
+        .then_ignore(just(Token::Requires))
+        .then_ignore(attribute().repeated())
         .then(expression())
         .then_ignore(semi)
         .map(|(f, e)| Kind::Requires(f, e));
-    let ens = just(Token::Ensures)
-        .ignore_then(just(Token::Free).or_not().map(|a| a.is_some()))
+    let ens = just(Token::Free)
+        .or_not()
+        .map(|a| a.is_some())
+        .then_ignore(just(Token::Ensures))
+        .then_ignore(attribute().repeated())
         .then(expression())
         .then_ignore(semi)
         .map(|(f, e)| Kind::Ensures(f, e));
@@ -787,6 +800,18 @@ where
         .then(expression())
         .map(|(attrs, e)| Statement::Assume(attrs, e));
 
+    let call_expr = attribute()
+        .or_not()
+        .ignore_then(ident())
+        .then(attribute().or_not())
+        .then(
+            expression()
+                .separated_by(just(Token::Comma))
+                .collect()
+                .delimited_by(just(Token::LeftParen), just(Token::RightParen)),
+        )
+        .boxed();
+
     let lhs_el = {
         use chumsky::pratt::*;
 
@@ -801,35 +826,37 @@ where
             .map(Lhs::Simple)
             .pratt((
                 postfix(0, map, |l, args| Lhs::Map(Box::new(l), args)),
-                postfix(0, field, |l, args| Lhs::Field(Box::new(l), args)),
+                postfix(1, field, |l, args| Lhs::Field(Box::new(l), args)),
             ))
             .boxed()
     };
 
+    let unpack_expr = ident()
+        .then(
+            ident()
+                .separated_by(just(Token::Comma))
+                .collect()
+                .delimited_by(just(Token::LeftParen), just(Token::RightParen)),
+        )
+        .boxed();
+
     // let lhs_el = just(Token::Arrow).ignore_then(expression()).or();
+    let unpack = unpack_expr
+        .then_ignore(just(Token::Assign))
+        .then(expression())
+        .map(|(i, e)| Statement::Unpack(i, e));
 
     let assign = lhs_el
         .separated_by(just(Token::Comma))
         .collect()
         .then_ignore(just(Token::Assign))
+        .then_ignore(attribute().repeated())
         .then(expression().separated_by(just(Token::Comma)).collect())
         .map(|(i, e)| Statement::Assign(i, e));
 
     let havoc = just(Token::Havoc)
         .ignore_then(ident().separated_by(just(Token::Comma)).collect())
         .map(|ids| Statement::Havoc(ids));
-
-    let call_expr = attribute()
-        .or_not()
-        .ignore_then(ident())
-        .then(attribute().or_not())
-        .then(
-            expression()
-                .separated_by(just(Token::Comma))
-                .collect()
-                .delimited_by(just(Token::LeftParen), just(Token::RightParen)),
-        )
-        .boxed();
 
     let call = just(Token::Async)
         .or_not()
@@ -854,7 +881,7 @@ where
         )
         .map(|_calls| Statement::Par);
 
-    let cmd = choice((assert, assume, assign, havoc, call, par))
+    let cmd = choice((assert, assume, unpack, assign, havoc, call, par))
         .then_ignore(just(Token::Semicolon))
         .boxed();
 
@@ -922,8 +949,11 @@ where
                 )
             });
 
-        let invariant_ = just(Token::Invariant)
-            .then_ignore(attribute().or_not())
+        let invariant_ = just(Token::Free)
+            .or_not()
+            .map(|a| a.is_some())
+            .ignore_then(just(Token::Invariant))
+            .then_ignore(attribute().repeated())
             .ignore_then(
                 expression().map(Invariant::Expression).or(just(Token::Call)
                     .ignore_then(call_expr)
@@ -950,7 +980,8 @@ where
                 )
             });
         let break_ = just(Token::Break)
-            .map(|_| Statement::Break(None))
+            .ignore_then(ident().or_not())
+            .map(|i| Statement::Break(i))
             .then_ignore(just(Token::Semicolon));
 
         choice((block, break_, cmd.or(term), if_stmt, while_)).boxed()
@@ -968,6 +999,7 @@ where
         .collect::<Vec<_>>()
         .then_ignore(just(Token::Colon))
         .then(type_expr())
+        .then_ignore(just(Token::Where).then(expression()).or_not())
         .map(|(ids, ty)| ids.into_iter().map(|i| (i, ty.clone())).collect::<Vec<_>>());
 
     just(Token::Var)
@@ -1027,10 +1059,16 @@ where
     .labelled("literal");
 
     recursive(|expr| {
+        let ty_vars = ident()
+            .separated_by(just(Token::Comma))
+            .delimited_by(just(Token::LessThan), just(Token::GreaterThan));
+
         let lambda = {
             just(Token::Lambda)
+                .ignore_then(ty_vars.clone().or_not())
                 .ignore_then(formal_args_inner(expr.clone()))
                 .then_ignore(just(Token::DoubleColon))
+                .then_ignore(attribute_inner(expr.clone().boxed()).repeated())
                 .then(expr.clone())
                 .map(|(_vars, body)| Expression::Lambda(vec![], Box::new(body)))
         };
@@ -1040,9 +1078,6 @@ where
                 just(Token::Exists).to(Quantifier::Exists),
             ));
 
-            let ty_vars = ident()
-                .separated_by(just(Token::Comma))
-                .delimited_by(just(Token::LessThan), just(Token::GreaterThan));
             let bound_vars = ids_type();
 
             let trigger = expr
@@ -1050,21 +1085,50 @@ where
                 .separated_by(just(Token::Comma))
                 .collect()
                 .delimited_by(just(Token::LeftBrace), just(Token::RightBrace))
-                .map(Trigger)
-                .repeated()
-                .collect::<Vec<_>>();
+                .map(Trigger);
+            let attr = attribute_inner(expr.clone().boxed());
+            enum AorT {
+                A(Attribute),
+                T(Trigger),
+            }
             quantifier_type
+                .then_ignore(attribute_inner(expr.clone()).repeated())
                 .then_ignore(ty_vars.or_not())
                 .then(bound_vars)
                 .then_ignore(just(Token::DoubleColon))
-                .then_ignore(attribute_inner(expr.clone().boxed()).or_not())
-                // .then_ignore(attribute_inner(expr.clone().boxed()).boxed().or_not())
-                .then(trigger)
+                .then(attr.map(AorT::A).or(trigger.map(AorT::T)).repeated().collect::<Vec<_>>())
                 .then(expr.clone())
-                .map(|(((quantifier, vars), trigger), body)| {
-                    Expression::Quantifier(quantifier, vars, trigger, Box::new(body))
+                .map(|(((quantifier, vars), aorts), body)| {
+                    let mut triggers = Vec::new();
+                    let mut attrs = Vec::new();
+
+                    for aort in aorts {
+                        match aort {
+                            AorT::T(trigger) => triggers.push(trigger),
+                            AorT::A(attr) => attrs.push(attr),
+                        }
+                    }
+                    Expression::Quantifier(quantifier, vars, triggers, Box::new(body))
                 })
         };
+
+        let let_expr = just(Token::Var)
+            .ignore_then(
+                attribute_inner(expr.clone())
+                    .repeated()
+                    .collect()
+                    .then(ident())
+                    .separated_by(just(Token::Comma))
+                    .collect(),
+            )
+            .then_ignore(just(Token::Assign))
+            .then(expr.clone().separated_by(just(Token::Comma)).collect())
+            .then_ignore(just(Token::Semicolon))
+            .then(attribute_inner(expr.clone()).repeated().collect())
+            .then(expr.clone())
+            .map(|(((ids, exprs), attrs), body)| {
+                Expression::Let(ids, exprs, attrs, Box::new(body))
+            });
 
         let if_ = {
             just(Token::If)
@@ -1074,7 +1138,7 @@ where
                 .map(|((e, t), f)| Expression::If(Box::new(e), Box::new(t), Box::new(f)))
         };
 
-        let parenthesized = choice((expr.clone(), quantifier, lambda))
+        let parenthesized = choice((expr.clone(), quantifier, lambda, let_expr))
             .delimited_by(just(Token::LeftParen), just(Token::RightParen));
 
         let old = just(Token::Old)
@@ -1083,6 +1147,21 @@ where
                     .delimited_by(just(Token::LeftParen), just(Token::RightParen)),
             )
             .map(|e| Expression::Old(Box::new(e)));
+
+        let coercions = choice((
+            just(Token::Int)
+                .ignore_then(
+                    expr.clone()
+                        .delimited_by(just(Token::LeftParen), just(Token::RightParen)),
+                )
+                .map(|e| Expression::IntCast(Box::new(e))),
+            just(Token::Real)
+                .ignore_then(
+                    expr.clone()
+                        .delimited_by(just(Token::LeftParen), just(Token::RightParen)),
+                )
+                .map(|e| Expression::RealCast(Box::new(e))),
+        ));
 
         let function_call = ident()
             .then(
@@ -1094,12 +1173,29 @@ where
             .map(|(name, args)| Expression::FunctionCall(name, args))
             .labelled("function call");
 
-        let atom = choice((literal, old, function_call, variable, parenthesized));
+        let rounding = select! {
+            Token::RNE => Expression::Rounding,
+            Token::RTN => Expression::Rounding,
+            Token::RNA => Expression::Rounding,
+            Token::RTP => Expression::Rounding,
+            Token::RTZ => Expression::Rounding,
+        };
+
+        let atom = choice((
+            literal,
+            old,
+            coercions,
+            function_call,
+            variable,
+            parenthesized,
+            if_,
+            rounding,
+        ));
 
         enum MapOp {
             Bv(Expression, Expression),
             Map(Vec<Expression>),
-            Assign(Expression, Expression),
+            Assign(Vec<Expression>, Expression),
         }
         let bv_extract = expr
             .clone()
@@ -1114,40 +1210,35 @@ where
 
         let map_assign = expr
             .clone()
+            .separated_by(just(Token::Comma))
+            .collect()
             .then_ignore(just(Token::Assign))
             .then(expr.clone())
             .map(|(a, b)| MapOp::Assign(a, b));
 
-        let map_access = atom
-            .foldl(
-                bv_extract
-                    .clone()
-                    .or(bv_extract.delimited_by(just(Token::LeftParen), just(Token::RightParen)))
-                    .or(map_assign)
-                    .or(map_)
-                    .delimited_by(just(Token::LeftBracket), just(Token::RightBracket))
-                    .repeated(),
-                |acc, indices| match indices {
-                    MapOp::Bv(a, b) => {
-                        Expression::BvExtract(Box::new(acc), Box::new(a), Box::new(b))
-                    }
-                    MapOp::Map(indices) => Expression::MapSelect(Box::new(acc), indices),
-                    MapOp::Assign(a, b) => {
-                        Expression::MapUpdate(Box::new(acc), Box::new(a), Box::new(b))
-                    }
-                },
-            )
-            .labelled("map access");
+        let one_map_op = bv_extract
+            .clone()
+            .or(bv_extract.delimited_by(just(Token::LeftParen), just(Token::RightParen)))
+            .or(map_assign)
+            .or(map_)
+            .delimited_by(just(Token::LeftBracket), just(Token::RightBracket));
 
-        let rounding = select! {
-            Token::RNE => Expression::Rounding,
-            Token::RTN => Expression::Rounding,
-            Token::RNA => Expression::Rounding,
-            Token::RTP => Expression::Rounding,
-            Token::RTZ => Expression::Rounding,
-        };
+        // let map_access = atom
+        //     .foldl(
+        //         one_map_op.clone().repeated(),
+        //         |acc, indices| match indices {
+        //             MapOp::Bv(a, b) => {
+        //                 Expression::BvExtract(Box::new(acc), Box::new(a), Box::new(b))
+        //             }
+        //             MapOp::Map(indices) => Expression::MapSelect(Box::new(acc), indices),
+        //             MapOp::Assign(a, b) => {
+        //                 Expression::MapUpdate(Box::new(acc), Box::new(a), Box::new(b))
+        //             }
+        //         },
+        //     )
+        //     .labelled("map access");
 
-        let atom = choice((rounding, map_access, if_));
+        // let atom = map_access;
         use chumsky::pratt::*;
 
         atom.pratt((
@@ -1227,13 +1318,12 @@ where
                     // TODO
                     op
                 },
-            ), // postfix(
-               //     10,
-               //     just(Token::LeftBracket)
-               //         .ignore_then(expr.clone().boxed().separated_by(just(Token::Comma)).collect::<Vec<_>>())
-               //         .then_ignore(just(Token::RightBracket)),
-               //     |e, op| Expression::MapSelect(Box::new(e), op),
-               // ),
+            ),
+            postfix(10, one_map_op, |e, map_op| match map_op {
+                MapOp::Bv(a, b) => Expression::BvExtract(Box::new(e), Box::new(a), Box::new(b)),
+                MapOp::Map(indices) => Expression::MapSelect(Box::new(e), indices),
+                MapOp::Assign(a, b) => Expression::MapUpdate(Box::new(e), a, Box::new(b)),
+            }),
         ))
         .boxed()
     })

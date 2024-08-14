@@ -1,10 +1,12 @@
-use logos::Logos;
+use logos::{FilterResult, Lexer, Logos};
 
 #[derive(Logos, Debug, PartialEq, Copy, Clone)]
 #[logos(skip r"[ \t\n\f]+")] // Ignore whitespace
 #[logos(skip r"//.*")] // Ignore line comments
-#[logos(skip r"/\*(?:[^*]|\*[^/])*\*/")] // Ignore block comments
+// #[logos(skip r"\/\*([^*]|\*[^\/])+\*\/")] // Ignore block comments
 pub enum Token<'a> {
+    #[token("/*", multiline_comment)]
+    MultiComment,
     Error,
     #[regex(r"([#$'\.?A-Z^-z~][#$'\.0-9?A-Z^-z~]*)", priority = 2)]
     Ident(&'a str),
@@ -21,7 +23,7 @@ pub enum Token<'a> {
     #[regex(r"[0-9]+(e-?[0-9]+)?", priority = 3)]
     Decimal(&'a str),
 
-    #[regex(r"[0-9]+\.[0-9]+|0(NaN|nan)[0-9]+e[0-9]+|0[+-]oo[0-9]+e[0-9]+")]
+    #[regex(r"([0-9]+\.[0-9]+(e-?[0-9]+)?|0(NaN|nan)[0-9]+e[0-9]+|0[+-]oo[0-9]+e[0-9]+)")]
     DecFloat(&'a str),
 
     #[regex(r"b[0-9]+e[-+]?[0-9]+")]
@@ -262,6 +264,34 @@ pub enum Token<'a> {
     Bullet,
 }
 
+
+// TODO: Handle nested ocmments
+fn multiline_comment<'a>(lex: &mut Lexer<'a, Token<'a>>) -> FilterResult<(), ()> {
+    enum State {
+        ExpectStar,
+        ExpectSlash,
+    }
+    let remainder = lex.remainder();
+    let (mut state, mut iter) = (State::ExpectStar, remainder.chars());
+    while let Some(next_char) = iter.next() {
+        match next_char {
+            '\n' => {
+                // lex.extras.line += 1;
+                // lex.extras.line_beg = lex.span().end + (remainder.len() - iter.as_str().len());
+                state = State::ExpectStar;
+            }
+            '*' => state = State::ExpectSlash,
+            '/' if matches!(state, State::ExpectSlash) => {
+                lex.bump(remainder.len() - iter.as_str().len());
+                return FilterResult::Skip;
+            }
+            _ => state = State::ExpectStar,
+        }
+    }
+    lex.bump(remainder.len());
+    FilterResult::Error(())
+}
+
 use std::fmt;
 
 impl<'a> fmt::Display for Token<'a> {
@@ -389,6 +419,7 @@ impl<'a> fmt::Display for Token<'a> {
             Token::LambdaSymbol => write!(f, "λ"),
             Token::DoubleColon => write!(f, "::"),
             Token::Bullet => write!(f, "•"),
+            Token::MultiComment => write!(f, "comment")
         }
     }
 }
