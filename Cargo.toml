@@ -10,3 +10,10 @@ color-eyre = "0.6.3"
 logos = "0.14.1"
 pretty = "0.12.3"
 regex = "1.10.6"
+
+[dev-dependencies]
+walkdir = "*"
+
+[[test]]
+name = "roundtrip"
+harness = false

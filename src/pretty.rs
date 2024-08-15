@@ -689,7 +689,7 @@ where
             Expression::RealCast(expr) => {
                 docs![alloc, "real(", &**expr, ")"]
             }
-            Expression::Lambda(_, _) => todo!(),
+            Expression::Lambda(vars, expr) => docs![alloc, alloc.intersperse(vars, ", "), "::", &**expr].parens(),
             Expression::If(cond, then_expr, else_expr) => docs![
                 alloc,
                 "if",
@@ -786,6 +786,22 @@ where
             FormalArg::Anon(typ) => typ.pretty(alloc),
             FormalArg::Named(name, typ) => docs![alloc, name, ":", alloc.space(), typ],
         }
+    }
+}
+
+impl<'a, D: DocAllocator<'a>> Pretty<'a, D> for &'a Variable
+where
+    D::Doc: Clone,
+{
+    fn pretty(self, alloc: &'a D) -> pretty::DocBuilder<'a, D, ()> {
+        docs![alloc,
+            &self.name,
+            &self.typ,
+            match &self.where_clause {
+                Some(wc) => wc.pretty(alloc),
+                None => alloc.nil()
+            }
+        ]
     }
 }
 

@@ -1,9 +1,9 @@
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, PartialEq)]
 pub struct Program {
     pub declarations: Vec<Declaration>,
 }
 
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, PartialEq)]
 pub enum Declaration {
     Const(ConstDecl),
     Function(FunctionDecl),
@@ -18,7 +18,7 @@ pub enum Declaration {
     YieldProcedure(YieldProcedureDecl),
 }
 
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, PartialEq)]
 pub struct ConstDecl {
     pub vars: Vec<(String, Type)>,
     pub unique: bool,
@@ -26,7 +26,7 @@ pub struct ConstDecl {
     pub attributes: Vec<Attribute>,
 }
 
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, PartialEq)]
 pub struct FunctionDecl {
     pub signature: Signature,
     pub body: Option<Expression>,
@@ -34,21 +34,21 @@ pub struct FunctionDecl {
     pub attributes: Vec<Attribute>,
 }
 
-// #[derive(Debug, Clone)]
+// #[derive(Debug, Clone, PartialEq)]
 // pub struct AxiomDecl {
 //     pub hideable: bool,
 //     pub expression: Expression,
 //     pub attributes: Vec<Attribute>,
 // }
 
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, PartialEq)]
 pub struct TypeDecl {
     pub names: Vec<(String, Vec<TypeVariable>)>,
     pub body: Option<Type>,
     pub attributes: Vec<Attribute>,
 }
 
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, PartialEq)]
 pub struct DatatypeDecl {
     pub name: String,
     pub type_params: Vec<TypeVariable>,
@@ -56,13 +56,13 @@ pub struct DatatypeDecl {
     pub attributes: Vec<Attribute>,
 }
 
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, PartialEq)]
 pub struct DatatypeConstructor {
     pub name: String,
     pub fields: Vec<Variable>,
 }
 
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, PartialEq)]
 pub struct GlobalVarDecl {
     pub name: String,
     pub typ: Type,
@@ -70,7 +70,7 @@ pub struct GlobalVarDecl {
     pub attributes: Vec<Attribute>,
 }
 
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, PartialEq)]
 pub struct ProcedureDecl {
     pub pure: bool,
     pub signature: Signature,
@@ -79,14 +79,14 @@ pub struct ProcedureDecl {
     pub attributes: Vec<Attribute>,
 }
 
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, PartialEq)]
 pub struct Specifications {
     pub requires: Vec<Requires>,
     pub modifies: Vec<String>,
     pub ensures: Vec<Ensures>,
 }
 
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, PartialEq)]
 pub struct Signature {
     pub name: String,
     pub type_params: Vec<TypeVariable>,
@@ -94,20 +94,20 @@ pub struct Signature {
     pub returns: Option<FormalArg>,
 }
 
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, PartialEq)]
 pub enum FormalArg {
     Anon(Type),
     Named(String, Type),
 }
 
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, PartialEq)]
 pub struct ImplementationDecl {
     pub signature: Signature,
     pub body: ImplBlock,
     pub attributes: Vec<Attribute>,
 }
 
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, PartialEq)]
 pub enum Mover {
     Atomic,
     Both,
@@ -115,7 +115,7 @@ pub enum Mover {
     Right,
 }
 
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, PartialEq)]
 pub struct ActionDecl {
     pub mover: Mover,
     pub signature: Signature,
@@ -123,14 +123,14 @@ pub struct ActionDecl {
     pub attributes: Vec<Attribute>,
 }
 
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, PartialEq)]
 pub struct YieldInvariantDecl {
     pub name: String,
     pub params: Vec<FormalArg>,
     pub invariants: Vec<Expression>,
 }
 
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, PartialEq)]
 pub struct YieldSpecifications {
     pub requires: Vec<Requires>,
     pub modifies: Vec<String>,
@@ -138,7 +138,7 @@ pub struct YieldSpecifications {
     pub refines: Vec<String>,
 }
 
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, PartialEq)]
 pub struct ActionSpecifications {
     pub requires: Vec<Requires>,
     pub modifies: Vec<String>,
@@ -147,14 +147,14 @@ pub struct ActionSpecifications {
     pub creates: Vec<String>,
 }
 
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, PartialEq)]
 pub struct YieldProcedureDecl {
     pub signature: Signature,
     pub spec: YieldSpecifications,
     pub body: Option<ImplBlock>,
 }
 
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, PartialEq)]
 pub enum Type {
     Int,
     Real,
@@ -164,7 +164,7 @@ pub enum Type {
     UserDefined(String, Vec<Type>),
 }
 
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, PartialEq)]
 pub enum Expression {
     Literal(Literal),
     Var(String),
@@ -196,7 +196,7 @@ pub enum Expression {
     ),
 }
 
-#[derive(Debug, Clone, Copy)]
+#[derive(Debug, Clone, Copy, PartialEq)]
 pub enum Rounding {
     RNE, 
     RTN,
@@ -205,10 +205,10 @@ pub enum Rounding {
     RTZ,
 }
 
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, PartialEq)]
 pub struct Trigger(pub Vec<Expression>);
 
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, PartialEq)]
 pub enum Literal {
     Int(i64),
     Real(f64),
@@ -218,13 +218,13 @@ pub enum Literal {
     Float(f64),
 }
 
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, PartialEq)]
 pub enum UnaryOp {
     Not,
     Neg,
 }
 
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, PartialEq)]
 pub enum BinaryOp {
     Add,
     Sub,
@@ -245,33 +245,33 @@ pub enum BinaryOp {
     Concat,
 }
 
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, PartialEq)]
 pub enum Quantifier {
     Forall,
     Exists,
 }
 
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, PartialEq)]
 pub struct ImplBlock {
     pub local_vars: Vec<(String, Type)>,
     pub statements: Vec<Statement>,
 }
 
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, PartialEq)]
 pub struct BasicBlock {
     pub label: String,
     pub statements: Vec<Statement>,
     pub term: Option<Box<Statement>>,
 }
 
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, PartialEq)]
 pub enum Lhs {
     Simple(String),
     Map(Box<Lhs>, Vec<Expression>),
     Field(Box<Lhs>, String),
 }
 
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, PartialEq)]
 pub enum Statement {
     Block(BasicBlock),
     Assign(Vec<Lhs>, Vec<Expression>),
@@ -288,43 +288,43 @@ pub enum Statement {
     Unpack((String, Vec<String>), Expression),
 }
 
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, PartialEq)]
 pub enum Invariant {
     Expression(Expression),
     Call(String, Vec<Expression>),
 }
 
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, PartialEq)]
 pub struct Variable {
     pub name: String,
     pub typ: Type,
     pub where_clause: Option<Expression>,
 }
 
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, PartialEq)]
 pub struct TypeVariable {
     pub name: String,
 }
 
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, PartialEq)]
 pub struct Attribute {
     pub name: String,
     pub params: Vec<Expression>,
 }
 
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, PartialEq)]
 pub struct Requires {
     pub free: bool,
     pub expression: Expression,
 }
 
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, PartialEq)]
 pub struct Ensures {
     pub free: bool,
     pub expression: Expression,
 }
 
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, PartialEq)]
 pub struct Axiom {
     pub hideable: bool,
     pub expression: Expression,
