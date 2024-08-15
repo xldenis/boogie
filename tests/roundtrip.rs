@@ -19,7 +19,7 @@ fn main() -> Result<()> {
 
     let test_dir = Path::new("boogie-orig/Test");
     let mut failed_tests = Vec::new();
-
+    let mut num_tests = 0;
     for entry in WalkDir::new(test_dir).into_iter().filter_map(|e| e.ok()) {
         let path = entry.path();
         if path.extension().map_or(false, |ext| ext == "bpl") {
@@ -30,13 +30,14 @@ fn main() -> Result<()> {
                     failed_tests.push(path.to_path_buf());
                 }
             }
+            num_tests +=1;
         }
     }
 
     if failed_tests.is_empty() {
         println!("All tests passed successfully!");
     } else {
-        println!("The following tests failed:");
+        println!("{} / {} failed tests:", failed_tests.len(), num_tests);
         for test in failed_tests {
             println!("- {}", test.display());
         }
