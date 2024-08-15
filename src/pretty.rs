@@ -2,6 +2,15 @@ use pretty::{docs, DocAllocator, Pretty};
 
 use crate::ast::*;
 
+impl<'a, D: DocAllocator<'a>> Pretty<'a, D> for &'a Program
+where
+    D::Doc: Clone,
+{
+    fn pretty(self, alloc: &'a D) -> pretty::DocBuilder<'a, D, ()> {
+        alloc.intersperse(&self.declarations, alloc.hardline())
+    }
+}
+
 impl<'a, D: DocAllocator<'a>> Pretty<'a, D> for &'a Declaration
 where
     D::Doc: Clone,
@@ -41,13 +50,9 @@ where
 
         // Add variables
         let vars_doc = alloc.intersperse(
-            self.vars.iter().map(|(name, typ)| {
-                alloc
-                    .text(name)
-                    .append(":")
-                    .append(alloc.space())
-                    .append(typ.pretty(alloc))
-            }),
+            self.vars
+                .iter()
+                .map(|(name, typ)| alloc.text(name).append(": ").append(typ)),
             ", ",
         );
         doc = doc.append(alloc.space()).append(vars_doc);
@@ -57,10 +62,7 @@ where
             doc = doc.append(";");
         } else {
             // Add 'uses' block with axioms
-            doc = doc
-                .append(alloc.space())
-                .append("uses")
-                .append(alloc.space());
+            doc = doc.append(" uses ");
 
             let axioms = alloc
                 .intersperse(self.axioms.iter(), alloc.hardline())
@@ -82,19 +84,19 @@ where
 
         // Add 'hideable' if applicable
         if self.hideable {
-            doc = doc.append("hideable").append(alloc.space());
+            doc = doc.append("hideable ");
         }
 
         doc = doc.append("axiom");
 
         // Add attributes
-        let attrs_doc = alloc.intersperse(self.attributes.iter(), alloc.space());
+        let attrs_doc = alloc.intersperse(&self.attributes, alloc.space());
         doc = doc.append(alloc.space()).append(attrs_doc);
 
         // Add expression
         doc = doc
             .append(alloc.space())
-            .append(self.expression.pretty(alloc))
+            .append(&self.expression)
             .append(";");
 
         doc.group()
@@ -507,8 +509,8 @@ impl Expression {
                 BinaryOp::Or => 30,
                 BinaryOp::Implies => 20,
                 BinaryOp::Iff => 10,
-                BinaryOp::Pow => todo!(),
-                BinaryOp::Concat => todo!(),
+                BinaryOp::Pow => 90,
+                BinaryOp::Concat => 70,
             },
             Expression::FunctionCall(_, _)
             | Expression::Field(_, _)
@@ -518,6 +520,23 @@ impl Expression {
             Expression::Quantifier(_, _, _, _) => 1,
             Expression::Let(_, _, _, _) => 1,
             _ => 0,
+        }
+    }
+}
+
+enum Associativity {
+    Left,
+    Right,
+    None,
+}
+
+impl BinaryOp {
+    fn associativity(self) -> Associativity {
+        use BinaryOp::*;
+        match self {
+            Mul | Add | Div | Sub => Associativity::Left,
+            Eq => Associativity::None,
+            _ => Associativity::Left,
         }
     }
 }
@@ -532,7 +551,7 @@ where
             BinaryOp::Sub => "-",
             BinaryOp::Mul => "*",
             BinaryOp::Div => "/",
-            BinaryOp::Mod => "%",
+            BinaryOp::Mod => "mod",
             BinaryOp::Eq => "==",
             BinaryOp::Neq => "!=",
             BinaryOp::Lt => "<",
@@ -542,7 +561,7 @@ where
             BinaryOp::And => "&&",
             BinaryOp::Or => "||",
             BinaryOp::Implies => "==>",
-            BinaryOp::Iff => "<===>",
+            BinaryOp::Iff => "<==>",
             BinaryOp::Pow => "**",
             BinaryOp::Concat => "++",
         };
@@ -567,105 +586,97 @@ impl<'a, D: DocAllocator<'a>> Pretty<'a, D> for &'a Expression
 where
     D::Doc: Clone,
 {
-    fn pretty(self, allocator: &'a D) -> pretty::DocBuilder<'a, D, ()> {
+    fn pretty(self, alloc: &'a D) -> pretty::DocBuilder<'a, D, ()> {
         match self {
-            Expression::Literal(lit) => lit.pretty(allocator),
-            Expression::Var(name) => allocator.text(name),
+            Expression::Literal(lit) => lit.pretty(alloc),
+            Expression::Var(name) => alloc.text(name),
             Expression::UnaryOp(op, expr) => {
                 let expr_doc = if expr.precedence() < self.precedence() {
-                    expr.pretty(allocator).parens()
+                    expr.pretty(alloc).parens()
                 } else {
-                    expr.pretty(allocator)
+                    expr.pretty(alloc)
                 };
-                docs![allocator, op, expr_doc]
+                docs![alloc, op, expr_doc]
             }
             Expression::BinaryOp(op, left, right) => {
                 let left_doc = if left.precedence() < self.precedence() {
-                    left.pretty(allocator).parens()
+                    left.pretty(alloc).parens()
                 } else {
-                    left.pretty(allocator)
+                    left.pretty(alloc)
                 };
                 // TODO: Handle associativity correctly.
                 let right_doc = if right.precedence() <= self.precedence() {
-                    right.pretty(allocator).parens()
+                    right.pretty(alloc).parens()
                 } else {
-                    right.pretty(allocator)
+                    right.pretty(alloc)
                 };
-                docs![
-                    allocator,
-                    left_doc,
-                    allocator.space(),
-                    op,
-                    allocator.space(),
-                    right_doc
-                ]
-                .group()
+                docs![alloc, left_doc, alloc.space(), op, alloc.space(), right_doc].group()
             }
             Expression::FunctionCall(name, args) => {
-                let args_doc = allocator.intersperse(args, ", ");
-                docs![allocator, name, args_doc.parens(),].group()
+                let args_doc = alloc.intersperse(args, ", ");
+                docs![alloc, name, args_doc.parens(),].group()
             }
             Expression::Field(expr, field) => {
-                docs![allocator, &**expr, ".", field]
+                docs![alloc, &**expr, ".", field]
             }
             Expression::MapSelect(map, indexes) => {
-                let indexes_doc = allocator.intersperse(indexes, ", ");
-                docs![allocator, &**map, indexes_doc.brackets()].group()
+                let indexes_doc = alloc.intersperse(indexes, ", ");
+                docs![alloc, &**map, indexes_doc.brackets()].group()
             }
 
             Expression::BvExtract(expr, high, low) => {
                 let expr_doc = if expr.precedence() < self.precedence() {
-                    expr.pretty(allocator).parens()
+                    expr.pretty(alloc).parens()
                 } else {
-                    expr.pretty(allocator)
+                    expr.pretty(alloc)
                 };
                 expr_doc
-                    .append(docs![allocator, &**high, ":", &**low,].brackets())
+                    .append(docs![alloc, &**high, ":", &**low,].brackets())
                     .group()
             }
 
             Expression::MapUpdate(map, indexes, value) => {
                 let map_doc = if map.precedence() < self.precedence() {
-                    map.pretty(allocator).parens()
+                    map.pretty(alloc).parens()
                 } else {
-                    map.pretty(allocator)
+                    map.pretty(alloc)
                 };
-                let indexes_doc = allocator.intersperse(indexes, ", ");
+                let indexes_doc = alloc.intersperse(indexes, ", ");
 
                 map_doc
-                    .append(docs![allocator, indexes_doc, ":=", &**value].brackets())
+                    .append(docs![alloc, indexes_doc, ":=", &**value].brackets())
                     .group()
             }
             Expression::Old(expr) => {
-                docs![allocator, "old(", &**expr, ")"]
+                docs![alloc, "old(", &**expr, ")"]
             }
             Expression::Quantifier(quantifier, vars, triggers, body) => {
                 let quantifier_doc = match quantifier {
                     Quantifier::Forall => "forall",
                     Quantifier::Exists => "exists",
                 };
-                let vars_doc = allocator.intersperse(
+                let vars_doc = alloc.intersperse(
                     vars.iter()
-                        .map(|(name, ty)| docs![allocator, name, ":", allocator.space(), ty]),
+                        .map(|(name, ty)| docs![alloc, name, ":", alloc.space(), ty]),
                     ", ",
                 );
                 let triggers_doc = if !triggers.is_empty() {
                     docs![
-                        allocator,
-                        allocator.space(),
-                        allocator.intersperse(triggers, ", ").braces(),
+                        alloc,
+                        alloc.space(),
+                        alloc.intersperse(triggers, ", ").braces(),
                     ]
                 } else {
-                    allocator.nil()
+                    alloc.nil()
                 };
                 docs![
-                    allocator,
+                    alloc,
                     quantifier_doc,
-                    allocator.space(),
+                    alloc.space(),
                     vars_doc,
                     triggers_doc,
                     "::",
-                    allocator.space(),
+                    alloc.space(),
                     &**body
                 ]
                 .parens()
@@ -673,51 +684,57 @@ where
                 .group()
             }
             Expression::IntCast(expr) => {
-                docs![allocator, "int(", &**expr, ")"]
+                docs![alloc, "int(", &**expr, ")"]
             }
             Expression::RealCast(expr) => {
-                docs![allocator, "real(", &**expr, ")"]
+                docs![alloc, "real(", &**expr, ")"]
             }
             Expression::Lambda(_, _) => todo!(),
             Expression::If(cond, then_expr, else_expr) => docs![
-                allocator,
+                alloc,
                 "if",
-                allocator.space(),
+                alloc.space(),
                 &**cond,
-                allocator.space(),
+                alloc.space(),
                 "then",
-                allocator.space(),
+                alloc.space(),
                 &**then_expr,
-                allocator.space(),
+                alloc.space(),
                 "else",
-                allocator.space(),
+                alloc.space(),
                 &**else_expr
             ]
             .nest(2)
             .group(),
-            Expression::Rounding => todo!(),
+            Expression::Rounding(r) => match r {
+                Rounding::RNE => alloc.text("RNE"),
+                Rounding::RTN => alloc.text("RTN"),
+                Rounding::RNA => alloc.text("RNA"),
+                Rounding::RTP => alloc.text("RTP"),
+                Rounding::RTZ => alloc.text("RTZ"),
+            },
             Expression::Is(expr, type_name) => {
                 let expr_doc = if expr.precedence() < self.precedence() {
-                    expr.pretty(allocator).parens()
+                    expr.pretty(alloc).parens()
                 } else {
-                    expr.pretty(allocator)
+                    expr.pretty(alloc)
                 };
-                docs![allocator, expr_doc, " is ", type_name,].group()
+                docs![alloc, expr_doc, " is ", type_name,].group()
             }
 
             Expression::Let(vars, exprs, attrs, body) => {
                 let var_docs = vars
                     .iter()
-                    .map(|(attrs, nm)| allocator.intersperse(attrs, " ").append(nm));
+                    .map(|(attrs, nm)| alloc.intersperse(attrs, " ").append(nm));
                 docs![
-                    allocator,
+                    alloc,
                     "var",
-                    allocator.intersperse(var_docs, ", "),
+                    alloc.intersperse(var_docs, ", "),
                     ":=",
-                    allocator.intersperse(exprs, ", "),
+                    alloc.intersperse(exprs, ", "),
                     ";",
-                    allocator.intersperse(attrs, " "),
-                    allocator.line(),
+                    alloc.intersperse(attrs, " "),
+                    alloc.line(),
                     &**body
                 ]
                 .nest(2)
@@ -817,15 +834,9 @@ where
                 "var",
                 alloc.space(),
                 alloc.intersperse(
-                    self.local_vars.iter().map(|(name, typ)| {
-                        docs![
-                            alloc,
-                            alloc.text(name),
-                            ":",
-                            alloc.space(),
-                            typ.pretty(alloc)
-                        ]
-                    }),
+                    self.local_vars
+                        .iter()
+                        .map(|(name, typ)| { docs![alloc, name, ": ", typ] }),
                     ", "
                 ),
                 ";"
@@ -1029,17 +1040,11 @@ where
             Statement::Call(name, args, returns) => {
                 let mut doc = docs![alloc, "call", alloc.space(),];
                 if !returns.is_empty() {
-                    doc = docs![
-                        alloc,
-                        alloc.intersperse(returns, ", "),
-                        alloc.space(),
-                        alloc.text(":="),
-                        alloc.space()
-                    ];
+                    doc = docs![alloc, alloc.intersperse(returns, ", "), alloc.text(" := "),];
                 }
                 doc = doc
                     .append(name)
-                    .append(docs![alloc, alloc.intersperse(args, ", ")].parens())
+                    .append(alloc.intersperse(args, ", ").parens())
                     .append(";");
                 doc.group()
             }
@@ -1054,9 +1059,7 @@ where
                 ];
                 if let Some(else_b) = else_block {
                     doc = doc
-                        .append(alloc.space())
-                        .append(alloc.text("else"))
-                        .append(alloc.space())
+                        .append(alloc.text(" else "))
                         .append(else_b.pretty(alloc));
                 }
                 doc.group()
@@ -1066,7 +1069,7 @@ where
                     alloc,
                     "while",
                     alloc.space(),
-                    cond.as_ref().map_or(alloc.text("*"), |c| c.pretty(alloc)),
+                    cond.as_ref().map_or(alloc.text("(*)"), |c| c.pretty(alloc)),
                     alloc.space(),
                 ];
                 if !invariants.is_empty() {
@@ -1094,7 +1097,7 @@ where
             ]
             .group(),
             Statement::Par => alloc.text("par TODO").append(";"),
-            Statement::Return => alloc.text("return TODO?").append(";"),
+            Statement::Return => alloc.text("return;"),
             Statement::Unpack((name, args), expr) => docs![
                 alloc,
                 name,
@@ -1164,9 +1167,7 @@ where
                     "invariant",
                     alloc.space(),
                     name,
-                    "(",
-                    args_doc,
-                    ")",
+                    args_doc.parens(),
                     ";"
                 ]
                 .group()

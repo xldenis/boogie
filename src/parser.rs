@@ -1179,11 +1179,11 @@ where
             .labelled("function call");
 
         let rounding = select! {
-            Token::RNE => Expression::Rounding,
-            Token::RTN => Expression::Rounding,
-            Token::RNA => Expression::Rounding,
-            Token::RTP => Expression::Rounding,
-            Token::RTZ => Expression::Rounding,
+            Token::RNE => Expression::Rounding(Rounding::RNE),
+            Token::RTN => Expression::Rounding(Rounding::RTN),
+            Token::RNA => Expression::Rounding(Rounding::RNA),
+            Token::RTP => Expression::Rounding(Rounding::RTP),
+            Token::RTZ => Expression::Rounding(Rounding::RTZ),
         };
 
         let atom = choice((

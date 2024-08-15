@@ -6,6 +6,7 @@ use chumsky::{
     Parser,
 };
 use logos::Logos;
+use pretty::BoxAllocator;
 // use pretty::{BoxAllocator, Pretty};
 
 fn main() -> color_eyre::eyre::Result<()> {
@@ -23,7 +24,7 @@ fn main() -> color_eyre::eyre::Result<()> {
     let stream = Stream::from_iter(tokens).spanned((file.len()..file.len()).into());
     let parse = parser::program().parse(stream);
 
-    let _result = match parse.into_result() {
+    let result = match parse.into_result() {
         Ok(re) => re,
         Err(errs) => {
             use ariadne::{Color, Label, Report, ReportKind, Source};
@@ -44,11 +45,11 @@ fn main() -> color_eyre::eyre::Result<()> {
             // return Ok(());
         }
     };
-
-    eprintln!("Parse ok!");
-    // let alloc = BoxAllocator;
-    // let stdout = std::io::stdout();
-    // let mut lock = stdout.lock();
-    // result.pretty(&alloc).render(120, &mut lock)?;
+    use pretty::Pretty;
+    // eprintln!("Parse ok!");
+    let alloc = BoxAllocator;
+    let stdout = std::io::stdout();
+    let mut lock = stdout.lock();
+    result.pretty(&alloc).render(120, &mut lock)?;
     Ok(())
 }

@@ -186,7 +186,7 @@ pub enum Expression {
     RealCast(Box<Expression>),
     Lambda(Vec<Variable>, Box<Expression>),
     If(Box<Expression>, Box<Expression>, Box<Expression>),
-    Rounding,
+    Rounding(Rounding),
     Is(Box<Expression>, String),
     Let(
         Vec<(Vec<Attribute>, String)>,
@@ -194,6 +194,15 @@ pub enum Expression {
         Vec<Attribute>,
         Box<Expression>,
     ),
+}
+
+#[derive(Debug, Clone, Copy)]
+pub enum Rounding {
+    RNE, 
+    RTN,
+    RNA,
+    RTP,
+    RTZ,
 }
 
 #[derive(Debug, Clone)]
