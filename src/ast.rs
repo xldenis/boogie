@@ -184,7 +184,7 @@ pub enum Expression {
     ),
     IntCast(Box<Expression>),
     RealCast(Box<Expression>),
-    Lambda(Vec<Variable>, Box<Expression>),
+    Lambda(Vec<FormalArg>, Box<Expression>),
     If(Box<Expression>, Box<Expression>, Box<Expression>),
     Rounding(Rounding),
     Is(Box<Expression>, String),
@@ -198,7 +198,7 @@ pub enum Expression {
 
 #[derive(Debug, Clone, Copy, PartialEq)]
 pub enum Rounding {
-    RNE, 
+    RNE,
     RTN,
     RNA,
     RTP,
@@ -278,7 +278,7 @@ pub enum Statement {
     Assert(Vec<Attribute>, Expression),
     Assume(Vec<Attribute>, Expression),
     Havoc(Vec<String>),
-    Call(String, Vec<Expression>, Vec<Expression>),
+    Call(Vec<String>, String, Vec<Expression>),
     If(Option<Expression>, ImplBlock, Option<ImplBlock>),
     While(Option<Expression>, Vec<Invariant>, ImplBlock),
     Break(Option<String>),

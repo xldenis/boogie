@@ -121,8 +121,8 @@ where
                 if params.is_empty() {
                     name_doc
                 } else {
-                    let params_doc = alloc.intersperse(params.iter(), ", ");
-                    name_doc.append(params_doc.angles())
+                    let params_doc = alloc.intersperse(params.iter(), " ");
+                    name_doc.append(" ").append(params_doc)
                 }
             }),
             ", ",
@@ -281,23 +281,21 @@ where
 
         // Add procedure signature
         doc = doc.append(alloc.space()).append(&self.signature);
+        if self.body.is_none() {
+            doc = doc.append(";");
+        }
 
         // Add specifications
         doc = doc.append(alloc.space()).append(&self.specifications);
 
         // Add body if present
         if let Some(body) = &self.body {
-            doc = doc.append(alloc.space()).append(
-                docs![
-                    alloc,
-                    alloc.line(),
-                    body.pretty(alloc).nest(2),
-                    alloc.line()
-                ]
-                .braces(),
-            );
-        } else {
-            doc = doc.append(";");
+            doc = doc.append(alloc.space()).append(docs![
+                alloc,
+                alloc.line(),
+                body.pretty(alloc).nest(2),
+                alloc.line()
+            ]);
         }
 
         doc.group()
@@ -321,15 +319,12 @@ where
         doc = doc.append(alloc.space()).append(&self.signature);
 
         // Add implementation body
-        doc = doc.append(alloc.space()).append(
-            docs![
-                alloc,
-                alloc.line(),
-                self.body.pretty(alloc).nest(2),
-                alloc.line()
-            ]
-            .braces(),
-        );
+        doc = doc.append(alloc.space()).append(docs![
+            alloc,
+            alloc.line(),
+            self.body.pretty(alloc).nest(2),
+            alloc.line()
+        ]);
 
         doc.group()
     }
@@ -340,9 +335,7 @@ where
     D::Doc: Clone,
 {
     fn pretty(self, alloc: &'a D) -> pretty::DocBuilder<'a, D, ()> {
-        let mut doc = alloc.text("action");
-
-        doc = doc.append(alloc.space()).append(&self.mover);
+        let mut doc = docs![alloc, &self.mover, " ", "action"];
 
         // Add attributes
         if !self.attributes.is_empty() {
@@ -354,15 +347,12 @@ where
         doc = doc.append(alloc.space()).append(&self.signature);
 
         // Add action body
-        doc = doc.append(alloc.space()).append(
-            docs![
-                alloc,
-                alloc.line(),
-                self.body.pretty(alloc).nest(2),
-                alloc.line()
-            ]
-            .braces(),
-        );
+        doc = doc.append(alloc.space()).append(docs![
+            alloc,
+            alloc.line(),
+            self.body.pretty(alloc).nest(2),
+            alloc.line()
+        ]);
 
         doc.group()
     }
@@ -415,15 +405,12 @@ where
 
         // Add body if present
         if let Some(body) = &self.body {
-            doc = doc.append(alloc.space()).append(
-                docs![
-                    alloc,
-                    alloc.line(),
-                    body.pretty(alloc).nest(2),
-                    alloc.line()
-                ]
-                .braces(),
-            );
+            doc = doc.append(alloc.space()).append(docs![
+                alloc,
+                alloc.line(),
+                body.pretty(alloc).nest(2),
+                alloc.line()
+            ]);
         } else {
             doc = doc.append(";");
         }
@@ -661,11 +648,7 @@ where
                     ", ",
                 );
                 let triggers_doc = if !triggers.is_empty() {
-                    docs![
-                        alloc,
-                        alloc.space(),
-                        alloc.intersperse(triggers, ", ").braces(),
-                    ]
+                    docs![alloc, alloc.space(), alloc.intersperse(triggers, " "),]
                 } else {
                     alloc.nil()
                 };
@@ -674,8 +657,8 @@ where
                     quantifier_doc,
                     alloc.space(),
                     vars_doc,
-                    triggers_doc,
                     "::",
+                    triggers_doc,
                     alloc.space(),
                     &**body
                 ]
@@ -689,7 +672,14 @@ where
             Expression::RealCast(expr) => {
                 docs![alloc, "real(", &**expr, ")"]
             }
-            Expression::Lambda(vars, expr) => docs![alloc, alloc.intersperse(vars, ", "), "::", &**expr].parens(),
+            Expression::Lambda(vars, expr) => docs![
+                alloc,
+                "lambda ",
+                alloc.intersperse(vars, ", "),
+                "::",
+                &**expr
+            ]
+            .parens(),
             Expression::If(cond, then_expr, else_expr) => docs![
                 alloc,
                 "if",
@@ -728,7 +718,7 @@ where
                     .map(|(attrs, nm)| alloc.intersperse(attrs, " ").append(nm));
                 docs![
                     alloc,
-                    "var",
+                    "var ",
                     alloc.intersperse(var_docs, ", "),
                     ":=",
                     alloc.intersperse(exprs, ", "),
@@ -737,6 +727,7 @@ where
                     alloc.line(),
                     &**body
                 ]
+                .parens()
                 .nest(2)
                 .group()
             }
@@ -760,8 +751,8 @@ where
                 alloc.text(s)
             }
             Literal::String(value) => {
-                let escaped = value.replace('\\', "\\\\").replace('"', "\\\"");
-                alloc.text(format!("\"{}\"", escaped))
+                // let escaped = value.replace('\\', "\\\\").replace('"', "\\\"");
+                alloc.text(format!("{value}"))
             }
             Literal::Float(value) => alloc.text(format!("{:e}", value)),
         }
@@ -794,12 +785,13 @@ where
     D::Doc: Clone,
 {
     fn pretty(self, alloc: &'a D) -> pretty::DocBuilder<'a, D, ()> {
-        docs![alloc,
+        docs![
+            alloc,
             &self.name,
             &self.typ,
             match &self.where_clause {
                 Some(wc) => wc.pretty(alloc),
-                None => alloc.nil()
+                None => alloc.nil(),
             }
         ]
     }
@@ -1029,19 +1021,21 @@ where
             .group(),
             Statement::Assert(attrs, expr) => docs![
                 alloc,
-                alloc.intersperse(attrs, alloc.space()),
                 "assert",
-                alloc.space(),
-                expr.pretty(alloc),
+                " ",
+                alloc.intersperse(attrs, alloc.space()),
+                " ",
+                expr,
                 ";"
             ]
             .group(),
             Statement::Assume(attrs, expr) => docs![
                 alloc,
-                alloc.intersperse(attrs, alloc.space()),
                 "assume",
-                alloc.space(),
-                expr.pretty(alloc),
+                " ",
+                alloc.intersperse(attrs, alloc.space()),
+                " ",
+                expr,
                 ";"
             ]
             .group(),
@@ -1053,10 +1047,10 @@ where
                 ";"
             ]
             .group(),
-            Statement::Call(name, args, returns) => {
+            Statement::Call(returns, name, args) => {
                 let mut doc = docs![alloc, "call", alloc.space(),];
                 if !returns.is_empty() {
-                    doc = docs![alloc, alloc.intersperse(returns, ", "), alloc.text(" := "),];
+                    doc = docs![alloc, doc, alloc.intersperse(returns, ", "), " := ",];
                 }
                 doc = doc
                     .append(name)
@@ -1069,7 +1063,9 @@ where
                     alloc,
                     "if",
                     alloc.space(),
-                    cond.as_ref().map_or(alloc.text("(*)"), |c| c.pretty(alloc)),
+                    cond.as_ref()
+                        .map_or(alloc.text("*"), |c| c.pretty(alloc))
+                        .parens(),
                     alloc.space(),
                     then_block.pretty(alloc)
                 ];
@@ -1085,7 +1081,9 @@ where
                     alloc,
                     "while",
                     alloc.space(),
-                    cond.as_ref().map_or(alloc.text("(*)"), |c| c.pretty(alloc)),
+                    cond.as_ref()
+                        .map_or(alloc.text("*"), |c| c.pretty(alloc))
+                        .parens(),
                     alloc.space(),
                 ];
                 if !invariants.is_empty() {

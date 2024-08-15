@@ -599,7 +599,7 @@ where
     enum Kind {
         Requires(bool, Expression),
         Ensures(bool, Expression),
-        Modifies(String),
+        Modifies(Vec<String>),
     }
 
     let semi = just(Token::Semicolon);
@@ -621,9 +621,9 @@ where
         .then_ignore(semi)
         .map(|(f, e)| Kind::Ensures(f, e));
     let modf = just(Token::Modifies)
-        .ignore_then(ident().separated_by(just(Token::Comma)))
+        .ignore_then(ident().separated_by(just(Token::Comma)).collect())
         .then_ignore(semi)
-        .map(|_| Kind::Modifies("".into()));
+        .map(|mods| Kind::Modifies(mods));
 
     choice((req, ens, modf))
         .repeated()
@@ -643,7 +643,7 @@ where
                         free: f,
                         expression: e,
                     }),
-                    Kind::Modifies(i) => modifies.push(i),
+                    Kind::Modifies(i) => modifies.extend(i),
                 }
             }
             Specifications {
@@ -865,11 +865,13 @@ where
         .ignore_then(
             (ident()
                 .separated_by(just(Token::Comma))
+                .collect()
                 .then_ignore(just(Token::Assign)))
-            .or_not(),
+            .or_not()
+            .map(|s| s.unwrap_or_default()),
         )
         .then(call_expr.clone())
-        .map(|(_, ((name, _attr), args))| Statement::Call(name, vec![], args));
+        .map(|(lhs, ((name, _attr), args))| Statement::Call(lhs, name, args));
     let par = just(Token::Par)
         .ignore_then(
             ((ident()
@@ -1066,11 +1068,11 @@ where
         let lambda = {
             just(Token::Lambda)
                 .ignore_then(ty_vars.clone().or_not())
-                .ignore_then(formal_args_inner(expr.clone()))
+                .then(formal_args_inner(expr.clone()))
                 .then_ignore(just(Token::DoubleColon))
                 .then_ignore(attribute_inner(expr.clone().boxed()).repeated())
                 .then(expr.clone())
-                .map(|(_vars, body)| Expression::Lambda(vec![], Box::new(body)))
+                .map(|((ty_vars, vars), body)| Expression::Lambda(vars, Box::new(body)))
         };
         let quantifier = {
             let quantifier_type = choice((
