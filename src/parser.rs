@@ -1249,69 +1249,69 @@ where
         use chumsky::pratt::*;
 
         atom.pratt((
-            prefix(0, just(Token::Minus).labelled("operator"), |_, e| {
-                Expression::UnaryOp(UnaryOp::Neg, Box::new(e))
-            }),
-            prefix(
-                0,
-                just(Token::NegationSymbol).or(just(Token::ExclamationMark)),
-                |_, e| Expression::UnaryOp(UnaryOp::Not, Box::new(e)),
-            ),
             infix(
-                left(1),
+                left(0),
                 just(Token::DoubleArrow).or(just(Token::LogicalEquivalence)),
                 |l, _, r| Expression::BinaryOp(BinaryOp::Iff, Box::new(l), Box::new(r)),
             ),
-            infix(right(2), just(Token::Implies), |l, _, r| {
+            infix(right(1), just(Token::Implies), |l, _, r| {
                 Expression::BinaryOp(BinaryOp::Implies, Box::new(l), Box::new(r))
             }),
-            infix(left(3), just(Token::LogicalOr), |l, _, r| {
+            infix(left(2), just(Token::LogicalOr), |l, _, r| {
                 Expression::BinaryOp(BinaryOp::Or, Box::new(l), Box::new(r))
             }),
-            infix(left(4), just(Token::LogicalAnd), |l, _, r| {
+            infix(left(2), just(Token::LogicalAnd), |l, _, r| {
                 Expression::BinaryOp(BinaryOp::And, Box::new(l), Box::new(r))
             }),
-            infix(left(5), just(Token::Equality), |l, _, r| {
+            infix(left(3), just(Token::Equality), |l, _, r| {
                 Expression::BinaryOp(BinaryOp::Eq, Box::new(l), Box::new(r))
             }),
-            infix(left(5), just(Token::NotEqual), |l, _, r| {
+            infix(left(3), just(Token::NotEqual), |l, _, r| {
                 Expression::BinaryOp(BinaryOp::Neq, Box::new(l), Box::new(r))
             }),
-            infix(left(6), just(Token::LessThan), |l, _, r| {
+            infix(left(3), just(Token::LessThan), |l, _, r| {
                 Expression::BinaryOp(BinaryOp::Lt, Box::new(l), Box::new(r))
             }),
-            infix(left(6), just(Token::LessThanOrEqual), |l, _, r| {
+            infix(left(3), just(Token::LessThanOrEqual), |l, _, r| {
                 Expression::BinaryOp(BinaryOp::Le, Box::new(l), Box::new(r))
             }),
-            infix(left(6), just(Token::GreaterThan), |l, _, r| {
+            infix(left(3), just(Token::GreaterThan), |l, _, r| {
                 Expression::BinaryOp(BinaryOp::Gt, Box::new(l), Box::new(r))
             }),
-            infix(left(6), just(Token::GreaterThanOrEqual), |l, _, r| {
+            infix(left(3), just(Token::GreaterThanOrEqual), |l, _, r| {
                 Expression::BinaryOp(BinaryOp::Ge, Box::new(l), Box::new(r))
             }),
-            infix(left(7), just(Token::Plus), |l, _, r| {
-                Expression::BinaryOp(BinaryOp::Add, Box::new(l), Box::new(r))
-            }),
-            infix(left(7), just(Token::Increment), |l, _, r| {
+            infix(left(4), just(Token::Increment), |l, _, r| {
                 Expression::BinaryOp(BinaryOp::Concat, Box::new(l), Box::new(r))
             }),
-            infix(left(7), just(Token::Minus), |l, _, r| {
+            infix(left(5), just(Token::Plus), |l, _, r| {
+                Expression::BinaryOp(BinaryOp::Add, Box::new(l), Box::new(r))
+            }),
+            infix(left(5), just(Token::Minus), |l, _, r| {
                 Expression::BinaryOp(BinaryOp::Sub, Box::new(l), Box::new(r))
             }),
-            infix(left(8), just(Token::Asterisk), |l, _, r| {
+            infix(left(6), just(Token::Asterisk), |l, _, r| {
                 Expression::BinaryOp(BinaryOp::Mul, Box::new(l), Box::new(r))
             }),
             infix(
-                left(8),
+                left(6),
                 just(Token::Div).or(just(Token::Division)),
                 |l, _, r| Expression::BinaryOp(BinaryOp::Div, Box::new(l), Box::new(r)),
             ),
-            infix(left(8), just(Token::Mod), |l, _, r| {
+            infix(left(6), just(Token::Mod), |l, _, r| {
                 Expression::BinaryOp(BinaryOp::Mod, Box::new(l), Box::new(r))
             }),
-            infix(right(9), just(Token::Exponentiation), |l, _, r| {
+            infix(right(7), just(Token::Exponentiation), |l, _, r| {
                 Expression::BinaryOp(BinaryOp::Pow, Box::new(l), Box::new(r))
             }),
+            prefix(8, just(Token::Minus).labelled("operator"), |_, e| {
+                Expression::UnaryOp(UnaryOp::Neg, Box::new(e))
+            }),
+            prefix(
+                8,
+                just(Token::NegationSymbol).or(just(Token::ExclamationMark)),
+                |_, e| Expression::UnaryOp(UnaryOp::Not, Box::new(e)),
+            ),
             postfix(10, just(Token::Arrow).ignore_then(ident()), |l, f| {
                 Expression::Field(Box::new(l), f)
             }),
