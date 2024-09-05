@@ -7,6 +7,7 @@ edition = "2021"
 ariadne = "0.4.1"
 chumsky = { version = "1.0.0-alpha.7", git = "https://github.com/ojkelly/chumsky", branch = "patch-1", features = ["label", "pratt"] }
 color-eyre = "0.6.3"
+itertools = "0.13.0"
 logos = "0.14.1"
 pretty = "0.12.3"
 regex = "1.10.6"

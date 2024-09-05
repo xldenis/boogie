@@ -91,7 +91,7 @@ pub struct Signature {
     pub name: String,
     pub type_params: Vec<TypeVariable>,
     pub params: Vec<FormalArg>,
-    pub returns: Option<FormalArg>,
+    pub returns: Option<Vec<FormalArg>>,
 }
 
 #[derive(Debug, Clone, PartialEq)]
@@ -298,7 +298,7 @@ pub enum Statement {
 
 #[derive(Debug, Clone, PartialEq)]
 pub enum Invariant {
-    Expression(Expression),
+    Expression(Vec<Attribute>, Expression),
     Call(String, Vec<Expression>),
 }
 

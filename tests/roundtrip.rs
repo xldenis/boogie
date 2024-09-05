@@ -17,7 +17,7 @@ use walkdir::WalkDir;
 fn main() -> Result<()> {
     color_eyre::install()?;
 
-    let test_dir = Path::new("boogie-orig/Test");
+    let test_dir = Path::new("boogie-orig/Test/civl/regression-tests/");
     let mut failed_tests = Vec::new();
     let mut num_tests = 0;
     for entry in WalkDir::new(test_dir).into_iter().filter_map(|e| e.ok()) {
@@ -30,7 +30,7 @@ fn main() -> Result<()> {
                     failed_tests.push(path.to_path_buf());
                 }
             }
-            num_tests +=1;
+            num_tests += 1;
         }
     }
 

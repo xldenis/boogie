@@ -372,7 +372,33 @@ where
 
         // Requires clauses
         if !self.requires.is_empty() {
-            docs.push(alloc.intersperse(&self.requires, alloc.line()));
+            docs.push(
+                alloc.intersperse(
+                    self.requires
+                        .iter()
+                        .map(|r| docs![alloc, "requires ", r, ";"]),
+                    alloc.line(),
+                ),
+            );
+        }
+
+        // TODO simplify.
+        // Require call clauses
+        if !self.requires_call.is_empty() {
+            let requires_doc = docs![
+                alloc,
+                alloc.intersperse(
+                    self.requires_call.iter().map(|rc| docs![
+                        alloc,
+                        "requires call ",
+                        &rc.0,
+                        alloc.intersperse(&rc.1, ", ").parens()
+                    ]),
+                    "; "
+                ),
+                ";"
+            ];
+            docs.push(requires_doc);
         }
 
         // Modifies clause
@@ -389,7 +415,14 @@ where
 
         // asserts clauses
         if !self.asserts.is_empty() {
-            docs.push(alloc.intersperse(&self.asserts, alloc.line()));
+            docs.push(
+                alloc.intersperse(
+                    self.asserts
+                        .iter()
+                        .map(|r| docs![alloc, "asserts ", r, ";"]),
+                    alloc.line(),
+                ),
+            );
         }
 
         // Refines clauses
@@ -463,11 +496,10 @@ where
         // Add procedure signature
         doc = doc.append(alloc.space()).append(&self.signature);
 
-        // Add specifications
-        doc = doc.append(alloc.space()).append(&self.spec);
-
         // Add body if present
         if let Some(body) = &self.body {
+            // Add specifications
+            doc = doc.append(alloc.space()).append(&self.spec);
             doc = doc.append(alloc.space()).append(docs![
                 alloc,
                 alloc.line(),
@@ -476,6 +508,8 @@ where
             ]);
         } else {
             doc = doc.append(";");
+            // Add specifications
+            doc = doc.append(alloc.space()).append(&self.spec);
         }
 
         doc.group()
@@ -668,7 +702,7 @@ where
                 docs![alloc, name, args_doc.parens(),].group()
             }
             Expression::Field(expr, field) => {
-                docs![alloc, &**expr, ".", field]
+                docs![alloc, &**expr, "->", field]
             }
             Expression::MapSelect(map, indexes) => {
                 let indexes_doc = alloc.intersperse(indexes, ", ");
@@ -892,7 +926,7 @@ where
                 .append(alloc.space())
                 .append("returns")
                 .append(alloc.space())
-                .append(returns.pretty(alloc).parens());
+                .append(alloc.intersperse(returns, ", ").parens());
         }
 
         doc.group()
@@ -1037,7 +1071,14 @@ where
 
         // Requires clauses
         if !self.requires.is_empty() {
-            docs.push(alloc.intersperse(&self.requires, alloc.line()));
+            docs.push(
+                alloc.intersperse(
+                    self.requires
+                        .iter()
+                        .map(|r| docs![alloc, "requires ", r, ";"]),
+                    alloc.line(),
+                ),
+            );
         }
 
         // Modifies clause
@@ -1054,7 +1095,14 @@ where
 
         // Ensures clauses
         if !self.ensures.is_empty() {
-            docs.push(alloc.intersperse(&self.ensures, alloc.line()));
+            docs.push(
+                alloc.intersperse(
+                    self.ensures
+                        .iter()
+                        .map(|r| docs![alloc, "ensures ", r, ";"]),
+                    alloc.line(),
+                ),
+            );
         }
 
         // Refines clauses
@@ -1069,9 +1117,10 @@ where
             docs.push(refines_doc);
         }
 
+        // TODO simplify.
         // Require call clauses
         if !self.req_calls.is_empty() {
-            let refines_doc = docs![
+            let requires_doc = docs![
                 alloc,
                 alloc.intersperse(
                     self.req_calls.iter().map(|rc| docs![
@@ -1084,12 +1133,12 @@ where
                 ),
                 ";"
             ];
-            docs.push(refines_doc);
+            docs.push(requires_doc);
         }
 
         // ensures call clauses
         if !self.ens_calls.is_empty() {
-            let refines_doc = docs![
+            let ensures_doc = docs![
                 alloc,
                 alloc.intersperse(
                     self.ens_calls.iter().map(|rc| docs![
@@ -1102,12 +1151,12 @@ where
                 ),
                 ";"
             ];
-            docs.push(refines_doc);
+            docs.push(ensures_doc);
         }
 
         // preservess call clauses
         if !self.preserves.is_empty() {
-            let refines_doc = docs![
+            let preserves_doc = docs![
                 alloc,
                 alloc.intersperse(
                     self.preserves.iter().map(|rc| docs![
@@ -1120,7 +1169,7 @@ where
                 ),
                 ";"
             ];
-            docs.push(refines_doc);
+            docs.push(preserves_doc);
         }
 
         alloc.intersperse(docs, alloc.line()).group()
@@ -1319,12 +1368,18 @@ where
 {
     fn pretty(self, alloc: &'a D) -> pretty::DocBuilder<'a, D> {
         match self {
-            Invariant::Expression(expr) => docs![alloc, "invariant", alloc.space(), expr, ";"],
+            Invariant::Expression(attrs, expr) => docs![
+                alloc,
+                "invariant ",
+                alloc.intersperse(attrs, alloc.space()),
+                expr,
+                ";"
+            ],
             Invariant::Call(name, args) => {
                 let args_doc = alloc.intersperse(&**args, ",");
                 docs![
                     alloc,
-                    "invariant",
+                    "invariant call",
                     alloc.space(),
                     name,
                     args_doc.parens(),

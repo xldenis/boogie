@@ -1,6 +1,6 @@
 use super::ast::*;
 use crate::lexer::Token;
-use chumsky::extra::Err;
+use chumsky::extra::{Err, ParserExtra};
 use chumsky::{input::ValueInput, prelude::*};
 
 pub fn program<'a, I>() -> impl Parser<'a, I, Program, Err<Rich<'a, Token<'a>>>>
@@ -466,13 +466,12 @@ where
     I: ValueInput<'a, Token = Token<'a>, Span = SimpleSpan>,
 {
     let returns = just(Token::Returns)
-        .ignore_then(formal_args().delimited_by(just(Token::LeftParen), just(Token::RightParen)))
-        .map(|_| ());
+        .ignore_then(formal_args().delimited_by(just(Token::LeftParen), just(Token::RightParen)));
 
     let anon_return = just(Token::Colon)
         .ignore_then(type_expr())
         .map(FormalArg::Anon)
-        .map(|_| ());
+        .map(|a| vec![a]);
 
     let ty_params = ident()
         .map(|i| TypeVariable { name: i })
@@ -485,11 +484,11 @@ where
         .then(
             returns.or(anon_return).or_not(), // .map(|a| a.flatten())
         )
-        .map(|(((name, type_params), params), _returns)| Signature {
+        .map(|(((name, type_params), params), returns)| Signature {
             name,
             type_params,
             params,
-            returns: None,
+            returns,
         })
 }
 
@@ -1025,13 +1024,17 @@ where
         let invariant_ = just(Token::Free)
             .or_not()
             .map(|a| a.is_some())
-            .ignore_then(just(Token::Invariant))
-            .then_ignore(attribute().repeated())
-            .ignore_then(
-                expression().map(Invariant::Expression).or(just(Token::Call)
-                    .ignore_then(call_expr)
-                    .map(|((name, _), args)| Invariant::Call(name, args))),
-            )
+            .then_ignore(just(Token::Invariant))
+            .then(attribute().repeated().collect::<Vec<_>>())
+            .boxed()
+            .then(either(
+                expression(),
+                just(Token::Call).ignore_then(call_expr),
+            ))
+            .map(|((_, attrs), inv_exp)| match inv_exp {
+                Either::Left(e) => Invariant::Expression(attrs, e),
+                Either::Right(((s, _), es)) => Invariant::Call(s, es),
+            })
             .then_ignore(just(Token::Semicolon));
 
         let while_ = just(Token::While)
@@ -1084,6 +1087,26 @@ where
         )
         .map(|c| c.into_iter().flatten().collect())
         .then_ignore(just(Token::Semicolon))
+}
+
+enum Either<A, B> {
+    Left(A),
+    Right(B),
+}
+
+fn either<
+    'a,
+    I: Input<'a>,
+    O,
+    E: ParserExtra<'a, I>,
+    P,
+    A: Parser<'a, I, O, E>,
+    B: Parser<'a, I, P, E>,
+>(
+    a: A,
+    b: B,
+) -> impl Parser<'a, I, Either<O, P>, E> {
+    a.map(Either::Left).or(b.map(Either::Right))
 }
 
 // pretty bugged out
