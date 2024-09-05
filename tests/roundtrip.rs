@@ -14,15 +14,31 @@ use walkdir::WalkDir;
 // Import necessary modules from your project
 // use crate::{Token, Stream, parser, Pretty, BoxAllocator};
 
+static DENIED: &[&str] = &[
+    "boogie-orig/Test/test0/SeparateVerification0.bpl",
+    "boogie-orig/Test/test0/AttributeParsingErr.bpl",
+    "boogie-orig/Test/test0/LineResolve.bpl",
+    "boogie-orig/Test/test0/LineParse.bpl",
+    "boogie-orig/Test/inline/codeexpr.bpl",
+    "boogie-orig/Test/codeexpr/codeExprBug.bpl",
+    "boogie-orig/Test/codeexpr/CodeExpr1.bpl",
+    "boogie-orig/Test/codeexpr/CodeExpr0.bpl",
+    "boogie-orig/Test/codeexpr/CodeExpr2.bpl",
+];
+
 fn main() -> Result<()> {
     color_eyre::install()?;
 
-    let test_dir = Path::new("boogie-orig/Test/civl/regression-tests/");
+    let test_dir = Path::new("boogie-orig/Test/");
     let mut failed_tests = Vec::new();
     let mut num_tests = 0;
     for entry in WalkDir::new(test_dir).into_iter().filter_map(|e| e.ok()) {
         let path = entry.path();
         if path.extension().map_or(false, |ext| ext == "bpl") {
+            if DENIED.contains(&path.to_str().unwrap()) {
+                continue;
+            }
+
             match run_roundtrip_test(path) {
                 Ok(_) => println!("Test passed: {}", path.display()),
                 Err(e) => {

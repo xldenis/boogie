@@ -588,9 +588,9 @@ impl Expression {
             Expression::BinaryOp(op, _, _) => match op {
                 BinaryOp::Mul | BinaryOp::Div | BinaryOp::Mod => 80,
                 BinaryOp::Add | BinaryOp::Sub => 70,
-                BinaryOp::Lt | BinaryOp::Le | BinaryOp::Gt | BinaryOp::Ge => 60,
+                BinaryOp::Lt | BinaryOp::Le | BinaryOp::Gt | BinaryOp::Ge => 50,
                 BinaryOp::Eq | BinaryOp::Neq => 50,
-                BinaryOp::And => 40,
+                BinaryOp::And => 30,
                 BinaryOp::Or => 30,
                 BinaryOp::Implies => 20,
                 BinaryOp::Iff => 10,
@@ -621,6 +621,7 @@ impl BinaryOp {
         match self {
             Mul | Add | Div | Sub => Associativity::Left,
             Eq => Associativity::None,
+            Implies => Associativity::Right,
             _ => Associativity::Left,
         }
     }
@@ -684,13 +685,18 @@ where
                 docs![alloc, op, expr_doc]
             }
             Expression::BinaryOp(op, left, right) => {
-                let left_doc = if left.precedence() < self.precedence() {
+                let (left_prec, right_prec) = match op.associativity() {
+                    Associativity::Left => (self.precedence(), self.precedence() + 1),
+                    Associativity::Right => (self.precedence() + 1, self.precedence()),
+                    Associativity::None => (self.precedence() + 1, self.precedence() + 1),
+                };
+                let left_doc = if left.precedence() < left_prec {
                     left.pretty(alloc).parens()
                 } else {
                     left.pretty(alloc)
                 };
-                // TODO: Handle associativity correctly.
-                let right_doc = if right.precedence() <= self.precedence() {
+
+                let right_doc = if right.precedence() < right_prec {
                     right.pretty(alloc).parens()
                 } else {
                     right.pretty(alloc)
