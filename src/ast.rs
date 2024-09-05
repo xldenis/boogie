@@ -97,7 +97,7 @@ pub struct Signature {
 #[derive(Debug, Clone, PartialEq)]
 pub enum FormalArg {
     Anon(Type),
-    Named(String, Type),
+    Named(Vec<Attribute>, String, Type),
 }
 
 #[derive(Debug, Clone, PartialEq)]
@@ -117,8 +117,9 @@ pub enum Mover {
 
 #[derive(Debug, Clone, PartialEq)]
 pub struct ActionDecl {
-    pub mover: Mover,
+    pub mover: Option<Mover>,
     pub signature: Signature,
+    pub specification: ActionSpecifications,
     pub body: ImplBlock,
     pub attributes: Vec<Attribute>,
 }
@@ -132,23 +133,30 @@ pub struct YieldInvariantDecl {
 
 #[derive(Debug, Clone, PartialEq)]
 pub struct YieldSpecifications {
-    pub requires: Vec<Requires>,
+    pub requires: Vec<Expression>,
     pub modifies: Vec<String>,
-    pub ensures: Vec<Ensures>,
-    pub refines: Vec<String>,
+    pub ensures: Vec<Expression>,
+    pub refines: Vec<(String, Option<String>)>,
+    pub preserves: Vec<CallExp>,
+    pub req_calls: Vec<CallExp>,
+    pub ens_calls: Vec<CallExp>,
 }
+
+type CallExp = (String, Vec<Expression>);
 
 #[derive(Debug, Clone, PartialEq)]
 pub struct ActionSpecifications {
-    pub requires: Vec<Requires>,
+    pub requires: Vec<Expression>,
+    pub requires_call: Vec<(String, Vec<Expression>)>,
     pub modifies: Vec<String>,
-    pub asserts: Vec<Ensures>,
+    pub asserts: Vec<Expression>,
     pub refines: Vec<String>,
     pub creates: Vec<String>,
 }
 
 #[derive(Debug, Clone, PartialEq)]
 pub struct YieldProcedureDecl {
+    pub attrs: Vec<Attribute>,
     pub signature: Signature,
     pub spec: YieldSpecifications,
     pub body: Option<ImplBlock>,
@@ -215,7 +223,7 @@ pub enum Literal {
     Bool(bool),
     BitVector(i128, u16),
     String(String),
-    Float(f64),
+    Float(String), // TODO: Parse
 }
 
 #[derive(Debug, Clone, PartialEq)]
@@ -283,7 +291,7 @@ pub enum Statement {
     While(Option<Expression>, Vec<Invariant>, ImplBlock),
     Break(Option<String>),
     Goto(Vec<String>),
-    Par,
+    Par(Vec<(Option<Vec<String>>, String, Vec<Expression>)>),
     Return,
     Unpack((String, Vec<String>), Expression),
 }

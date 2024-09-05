@@ -338,25 +338,27 @@ where
         .ignored()
         .then(is_async)
         .then(mover_type)
-        .then(just(Token::Action))
-        .ignore_then(attributes)
+        .then_ignore(just(Token::Action))
+        .then(attributes)
         .then(proc_signature())
         .then(
             just(Token::Semicolon)
                 .ignore_then(action_spec().map(|s| (s, None)))
                 .or(action_spec().then(block().map(|b| Some(b)))),
         ))
-    .map(|((attrs, signature), (_, _))| ActionDecl {
-        // is_async,
-        mover: Mover::Atomic,
-        signature,
-        // specifications: specs,
-        body: ImplBlock {
-            local_vars: Default::default(),
-            statements: Default::default(),
+    .map(
+        |(((((is_pure, async_), mover), attrs), signature), (specs, _))| ActionDecl {
+            // is_async,
+            mover,
+            signature,
+            specification: specs,
+            body: ImplBlock {
+                local_vars: Default::default(),
+                statements: Default::default(),
+            },
+            attributes: attrs,
         },
-        attributes: attrs,
-    })
+    )
     .boxed()
 }
 
@@ -393,12 +395,12 @@ fn yield_procedure_decl<'a, I>() -> impl Parser<'a, I, YieldProcedureDecl, Err<R
 where
     I: ValueInput<'a, Token = Token<'a>, Span = SimpleSpan>,
 {
-    let attributes = attribute().repeated();
+    let attributes = attribute().repeated().collect::<Vec<_>>();
     let mover_type = mover().or_not();
 
     just(Token::Yield)
-        .then_ignore(mover_type)
-        .then(just(Token::Procedure))
+        .ignore_then(mover_type)
+        .ignore_then(just(Token::Procedure))
         .ignore_then(attributes)
         .then(proc_signature())
         .then(
@@ -409,7 +411,8 @@ where
                 .then(block())
                 .map(|(spc, body)| (Some(body), spc))),
         )
-        .map(|((_attrs, sig), (body, spec))| YieldProcedureDecl {
+        .map(|((attrs, sig), (body, spec))| YieldProcedureDecl {
+            attrs,
             signature: sig,
             spec,
             body,
@@ -433,8 +436,8 @@ where
 {
     let formal_arg = attribute_inner(expr.clone())
         .repeated()
-        .ignored()
-        .ignore_then(ident())
+        .collect::<Vec<_>>()
+        .then(ident())
         .separated_by(just(Token::Comma))
         .collect::<Vec<_>>()
         .then_ignore(just(Token::Colon))
@@ -447,7 +450,7 @@ where
                 vec![FormalArg::Anon(ty)]
             } else {
                 ids.into_iter()
-                    .map(|id| FormalArg::Named(id, ty.clone()))
+                    .map(|(attrs, id)| FormalArg::Named(attrs, id, ty.clone()))
                     .collect()
             }
         });
@@ -497,47 +500,78 @@ where
     let function_call = ident().then(
         expression()
             .separated_by(just(Token::Comma))
-            // .collect()
+            .collect::<Vec<_>>()
             .delimited_by(just(Token::LeftParen), just(Token::RightParen)),
     );
+
+    enum YieldSpec {
+        Refn((String, Option<String>)),
+        Requires(Expression),
+        Ensures(Expression),
+        Modifies(Vec<String>),
+        ReqCall((String, Vec<Expression>)),
+        EnsCall((String, Vec<Expression>)),
+        Preserves((String, Vec<Expression>)),
+    }
+
     let refns = just(Token::Refines)
         .ignore_then(attribute().repeated())
         .ignore_then(ident())
-        .then_ignore((just(Token::Using).then(ident())).or_not())
-        .ignored();
+        .then((just(Token::Using).ignore_then(ident())).or_not())
+        .map(YieldSpec::Refn);
     let req = just(Token::Requires)
         .then(attribute().repeated())
-        .then(expression())
-        .ignored();
+        .ignore_then(expression())
+        .map(YieldSpec::Requires);
     let ens = just(Token::Ensures)
-        .then(attribute().repeated())
-        .then(expression())
-        .ignored();
+        .ignore_then(attribute().repeated())
+        .ignore_then(expression())
+        .map(YieldSpec::Ensures);
     let modf = just(Token::Modifies)
-        .then(ident().separated_by(just(Token::Comma)))
-        .ignored();
+        .ignore_then(ident().separated_by(just(Token::Comma)).collect())
+        .map(YieldSpec::Modifies);
     let req_call = just(Token::Requires)
         .ignore_then(just(Token::Call))
-        .then(function_call.clone())
-        .ignored();
+        .ignore_then(function_call.clone())
+        .map(YieldSpec::ReqCall);
     let ens_call = just(Token::Ensures)
         .ignore_then(just(Token::Call))
-        .then(function_call.clone())
-        .ignored();
-    let preserves = just(Token::Preserves)
-        .then(just(Token::Call))
         .ignore_then(function_call.clone())
-        .ignored();
+        .map(YieldSpec::EnsCall);
+    let preserves = just(Token::Preserves)
+        .ignore_then(just(Token::Call))
+        .ignore_then(function_call.clone())
+        .map(YieldSpec::Preserves);
 
     let specs = choice((refns, req, ens, modf, req_call, ens_call, preserves))
         .then_ignore(just(Token::Semicolon))
-        .repeated();
+        .repeated()
+        .collect::<Vec<_>>();
     specs
-        .map(|_refn| YieldSpecifications {
-            requires: vec![],
-            modifies: vec![],
-            ensures: vec![],
-            refines: vec![],
+        .map(|refn| {
+            let mut specs = YieldSpecifications {
+                requires: vec![],
+                modifies: vec![],
+                ensures: vec![],
+                refines: vec![],
+                preserves: vec![],
+                req_calls: vec![],
+                ens_calls: vec![],
+            };
+
+            for r in refn {
+                match r {
+                    YieldSpec::Refn(r) => specs.refines.push(r),
+                    YieldSpec::Requires(r) => specs.requires.push(r),
+                    YieldSpec::Ensures(e) => specs.ensures.push(e),
+                    YieldSpec::Modifies(m) => specs.modifies.extend(m),
+                    YieldSpec::ReqCall(rc) => specs.req_calls.push(rc),
+                    YieldSpec::EnsCall(ec) => specs.ens_calls.push(ec),
+                    YieldSpec::Preserves(pc) => specs.preserves.push(pc),
+                }
+            }
+
+            specs
         })
         .boxed()
 }
@@ -549,45 +583,73 @@ where
     let function_call = ident().then(
         expression()
             .separated_by(just(Token::Comma))
-            // .collect()
+            .collect()
             .delimited_by(just(Token::LeftParen), just(Token::RightParen)),
     );
+    enum ActionSpec {
+        Refines(String, Option<String>),
+        Requires(Expression),
+        Modifies(Vec<String>),
+        ReqCall(String, Vec<Expression>),
+        Creates(Vec<String>),
+        Asserts(Expression),
+    }
+
     let refns = just(Token::Refines)
         .ignore_then(attribute().or_not())
         .ignore_then(ident())
-        .then_ignore((just(Token::Using).then(ident())).or_not())
-        .ignored();
+        .then((just(Token::Using).ignore_then(ident())).or_not())
+        .map(|(id, refn)| ActionSpec::Refines(id, refn));
+
     let req = just(Token::Requires)
-        .then(attribute().repeated())
-        .then(expression())
-        .ignored();
+        .ignore_then(attribute().repeated())
+        .ignore_then(expression())
+        .map(ActionSpec::Requires);
+
     let modf = just(Token::Modifies)
-        .then(ident().separated_by(just(Token::Comma)))
-        .ignored();
+        .ignore_then(ident().separated_by(just(Token::Comma)).collect::<Vec<_>>())
+        .map(ActionSpec::Modifies);
+
     let req_call = just(Token::Requires)
         .ignore_then(just(Token::Call))
-        .then(function_call.clone())
-        .ignored();
+        .ignore_then(function_call.clone())
+        .map(|(id, args)| ActionSpec::ReqCall(id, args));
 
     let create = just(Token::Creates)
-        .ignore_then(ident().separated_by(just(Token::Comma)))
-        .ignored();
+        .ignore_then(ident().separated_by(just(Token::Comma)).collect::<Vec<_>>())
+        .map(ActionSpec::Creates);
 
     let asserts = just(Token::Asserts)
         .ignore_then(attribute().repeated())
         .ignore_then(expression())
-        .ignored();
+        .map(ActionSpec::Asserts);
 
     let specs = choice((refns, req, create, asserts, modf, req_call))
         .then_ignore(just(Token::Semicolon))
-        .repeated();
+        .repeated()
+        .collect::<Vec<_>>();
     specs
-        .map(|_refn| ActionSpecifications {
-            requires: vec![],
-            modifies: vec![],
-            refines: vec![],
-            asserts: vec![],
-            creates: vec![],
+        .map(|contracts| {
+            let mut specs = ActionSpecifications {
+                requires: vec![],
+                requires_call: vec![],
+                modifies: vec![],
+                refines: vec![],
+                asserts: vec![],
+                creates: vec![],
+            };
+            for c in contracts {
+                match c {
+                    ActionSpec::Refines(i, _u) => specs.refines.push(i),
+                    ActionSpec::Requires(e) => specs.requires.push(e),
+                    ActionSpec::Modifies(m) => specs.modifies.extend(m),
+                    ActionSpec::ReqCall(id, args) => specs.requires_call.push((id, args)),
+                    ActionSpec::Creates(c) => specs.creates.extend(c),
+                    ActionSpec::Asserts(a) => specs.asserts.push(a),
+                }
+            }
+
+            specs
         })
         .boxed()
 }
@@ -876,12 +938,21 @@ where
         .ignore_then(
             ((ident()
                 .separated_by(just(Token::Comma))
+                .collect::<Vec<_>>()
                 .then_ignore(just(Token::Assign)))
             .or_not()
             .then(call_expr.clone()))
-            .separated_by(just(Token::VerticalBar)),
+            .separated_by(just(Token::VerticalBar))
+            .collect::<Vec<_>>(),
         )
-        .map(|_calls| Statement::Par);
+        .map(|calls| {
+            let calls = calls
+                .into_iter()
+                // TODO: Keep attributes
+                .map(|(vars, (a, b))| (vars, a.0, b))
+                .collect();
+            Statement::Par(calls)
+        });
 
     let cmd = choice((assert, assume, unpack, assign, havoc, call, par))
         .then_ignore(just(Token::Semicolon))
@@ -1033,25 +1104,25 @@ where
                 Literal::BitVector(parts[0].parse().unwrap(), parts[1].parse().unwrap())
             )
         },
-        Token::HexFloat(_) => {
+        Token::HexFloat(hex_float) => {
             // TODO: Parse float string
             Expression::Literal(
                 Literal::Float(
-                    0.0
+                    hex_float.to_string()
             ))
         },
-        Token::DecFloat(_) => {
+        Token::DecFloat(f) => {
             // TODO: Parse float string
             Expression::Literal(
                 Literal::Float(
-                    0.0
+                    f.to_string()
             ))
         },
-        Token::BvFloat(_) => {
+        Token::BvFloat(f) => {
             // TODO: Parse float string
             Expression::Literal(
                 Literal::Float(
-                    0.0
+                    f.to_string()
             ))
         },
         Token::String(s) => Expression::Literal(Literal::String(s.to_string())),

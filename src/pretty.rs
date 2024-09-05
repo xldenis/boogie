@@ -39,14 +39,14 @@ where
     fn pretty(self, alloc: &'a D) -> pretty::DocBuilder<'a, D, ()> {
         let mut doc = alloc.text("const");
 
+        let attrs = alloc.intersperse(self.attributes.iter(), alloc.space());
+        // Add attributes
+        doc = doc.append(alloc.space()).append(attrs);
+
         // Add 'unique' if applicable
         if self.unique {
             doc = doc.append(alloc.space()).append("unique");
         }
-
-        let attrs = alloc.intersperse(self.attributes.iter(), alloc.space());
-        // Add attributes
-        doc = doc.append(alloc.space()).append(attrs);
 
         // Add variables
         let vars_doc = alloc.intersperse(
@@ -335,7 +335,11 @@ where
     D::Doc: Clone,
 {
     fn pretty(self, alloc: &'a D) -> pretty::DocBuilder<'a, D, ()> {
-        let mut doc = docs![alloc, &self.mover, " ", "action"];
+        let mover = match &self.mover {
+            None => alloc.nil(),
+            Some(m) => m.pretty(alloc),
+        };
+        let mut doc = docs![alloc, mover, " ", "action"];
 
         // Add attributes
         if !self.attributes.is_empty() {
@@ -346,6 +350,7 @@ where
         // Add action signature
         doc = doc.append(alloc.space()).append(&self.signature);
 
+        doc = doc.append(&self.specification);
         // Add action body
         doc = doc.append(alloc.space()).append(docs![
             alloc,
@@ -355,6 +360,63 @@ where
         ]);
 
         doc.group()
+    }
+}
+
+impl<'a, D: DocAllocator<'a>> Pretty<'a, D> for &'a ActionSpecifications
+where
+    D::Doc: Clone,
+{
+    fn pretty(self, alloc: &'a D) -> pretty::DocBuilder<'a, D, ()> {
+        let mut docs = Vec::new();
+
+        // Requires clauses
+        if !self.requires.is_empty() {
+            docs.push(alloc.intersperse(&self.requires, alloc.line()));
+        }
+
+        // Modifies clause
+        if !self.modifies.is_empty() {
+            let modifies_doc = docs![
+                alloc,
+                "modifies",
+                alloc.space(),
+                alloc.intersperse(&self.modifies, ", "),
+                ";"
+            ];
+            docs.push(modifies_doc);
+        }
+
+        // asserts clauses
+        if !self.asserts.is_empty() {
+            docs.push(alloc.intersperse(&self.asserts, alloc.line()));
+        }
+
+        // Refines clauses
+        if !self.refines.is_empty() {
+            let refines_doc = docs![
+                alloc,
+                "refines",
+                alloc.space(),
+                alloc.intersperse(&self.refines, ", "),
+                ";"
+            ];
+            docs.push(refines_doc);
+        }
+
+        // Refines clauses
+        if !self.creates.is_empty() {
+            let refines_doc = docs![
+                alloc,
+                "creates",
+                alloc.space(),
+                alloc.intersperse(&self.creates, ", "),
+                ";"
+            ];
+            docs.push(refines_doc);
+        }
+
+        alloc.intersperse(docs, alloc.line()).group()
     }
 }
 
@@ -397,6 +459,7 @@ where
     fn pretty(self, alloc: &'a D) -> pretty::DocBuilder<'a, D, ()> {
         let mut doc = alloc.text("yield procedure");
 
+        doc = doc.append(alloc.concat(self.attrs.iter().map(|a| a.pretty(alloc).append(" "))));
         // Add procedure signature
         doc = doc.append(alloc.space()).append(&self.signature);
 
@@ -470,8 +533,9 @@ where
                 if type_args.is_empty() {
                     name_doc
                 } else {
-                    let args_doc = alloc.intersperse(type_args, ", ");
-                    name_doc.append(args_doc.parens())
+                    let arg_docs = type_args.iter().map(|arg| arg.pretty(alloc).parens());
+                    let args_doc = alloc.intersperse(arg_docs, " ");
+                    name_doc.append(" ").append(args_doc)
                 }
             }
         }
@@ -754,7 +818,7 @@ where
                 // let escaped = value.replace('\\', "\\\\").replace('"', "\\\"");
                 alloc.text(format!("{value}"))
             }
-            Literal::Float(value) => alloc.text(format!("{:e}", value)),
+            Literal::Float(value) => alloc.text(format!("{}", value)),
         }
     }
 }
@@ -775,7 +839,14 @@ where
     fn pretty(self, alloc: &'a D) -> pretty::DocBuilder<'a, D, ()> {
         match self {
             FormalArg::Anon(typ) => typ.pretty(alloc),
-            FormalArg::Named(name, typ) => docs![alloc, name, ":", alloc.space(), typ],
+            FormalArg::Named(attrs, name, typ) => docs![
+                alloc,
+                alloc.concat(attrs.iter().map(|a| a.pretty(alloc).append(" "))),
+                name,
+                ":",
+                alloc.space(),
+                typ
+            ],
         }
     }
 }
@@ -992,7 +1063,61 @@ where
                 alloc,
                 "refines",
                 alloc.space(),
-                alloc.intersperse(&self.refines, ", "),
+                alloc.intersperse(self.refines.iter().map(|r| &r.0), ", "),
+                ";"
+            ];
+            docs.push(refines_doc);
+        }
+
+        // Require call clauses
+        if !self.req_calls.is_empty() {
+            let refines_doc = docs![
+                alloc,
+                alloc.intersperse(
+                    self.req_calls.iter().map(|rc| docs![
+                        alloc,
+                        "requires call ",
+                        &rc.0,
+                        alloc.intersperse(&rc.1, ", ").parens()
+                    ]),
+                    "; "
+                ),
+                ";"
+            ];
+            docs.push(refines_doc);
+        }
+
+        // ensures call clauses
+        if !self.ens_calls.is_empty() {
+            let refines_doc = docs![
+                alloc,
+                alloc.intersperse(
+                    self.ens_calls.iter().map(|rc| docs![
+                        alloc,
+                        "ensures call ",
+                        &rc.0,
+                        alloc.intersperse(&rc.1, ", ").parens()
+                    ]),
+                    "; "
+                ),
+                ";"
+            ];
+            docs.push(refines_doc);
+        }
+
+        // preservess call clauses
+        if !self.preserves.is_empty() {
+            let refines_doc = docs![
+                alloc,
+                alloc.intersperse(
+                    self.preserves.iter().map(|rc| docs![
+                        alloc,
+                        "preserves call ",
+                        &rc.0,
+                        alloc.intersperse(&rc.1, ", ").parens()
+                    ]),
+                    "; "
+                ),
                 ";"
             ];
             docs.push(refines_doc);
@@ -1110,7 +1235,28 @@ where
                 ";"
             ]
             .group(),
-            Statement::Par => alloc.text("par TODO").append(";"),
+            Statement::Par(calls) => {
+                let mut doc = alloc.text("par ");
+
+                let calls = calls.iter().map(|call| {
+                    let mut one_call = alloc.nil();
+
+                    if let Some(lhs) = &call.0 {
+                        one_call = one_call.append(alloc.intersperse(lhs, ", "));
+                        one_call = one_call.append(" := ");
+                    }
+
+                    one_call = one_call
+                        .append(&call.1)
+                        .append(alloc.intersperse(&call.2, ", ").parens());
+
+                    one_call
+                });
+
+                doc = doc.append(alloc.intersperse(calls, " | ")).append(";");
+
+                doc
+            }
             Statement::Return => alloc.text("return;"),
             Statement::Unpack((name, args), expr) => docs![
                 alloc,
